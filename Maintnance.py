@@ -1,6 +1,5 @@
 from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, db
 import time
-import tqdm
 import requests
 import json
 from Scorer.AE_Predictor import AestheticPredictor
@@ -40,6 +39,9 @@ def GetAestheticScore(MODELS_FOLDER, FA_FOLDER):
                 print(f"File not found: {image_path}")
                 continue
             score = pred.predict(image_path)
+            if score is None:
+                print(f"Error processing {image_path}")
+                continue
             image.score = score
             image.scored = True
         except Exception as e:
