@@ -1,0 +1,43 @@
+<div class="bottom-bar">
+    <!-- Display download queue here -->
+    {% for task in download_queue %}
+        <div>{{ task.artist_name }} - {{ task.status }}</div>
+    {% endfor %}
+</div>
+<script>
+// This script could be used to periodically update the bottom bar with the queue status
+function updateBottomBar() {
+    fetch('/queue-status').then(response => response.json()).then(data => {
+        const bottomBar = document.querySelector('.bottom-bar');
+        bottomBar.innerHTML = ''; // Clear current content
+        data.forEach(task => {
+            const taskDiv = document.createElement('div');
+            taskDiv.textContent = `${task.artist_info} - ${task.status} | ${task.downloaded_files} / ${task.total_files} | ${task.speed} | ${task.current_file_percent}%`;
+            bottomBar.appendChild(taskDiv);
+        });
+    }).catch(error => {
+        console.error('Error updating bottom bar:', error);
+    });
+}
+
+window.onload = updateBottomBar;
+
+// Call updateBottomBar at regular intervals
+setInterval(updateBottomBar, 5000);  // Every 5 seconds
+</script>
+<script>
+    document.dispatchEvent(new CustomEvent('bottomBarLoaded'));
+</script>
+
+<style>
+.bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: #333;
+    color: white;
+    text-align: center;
+    padding: 10px 0;
+}
+</style>

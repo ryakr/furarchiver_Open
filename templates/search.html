@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search - Archive Downloader</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+	<style>
+    .main-content {
+        margin-bottom: 60px; /* Adjust this based on the estimated height of your bottom bar */
+    }
+	</style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <div class="container mt-5 main-content">
+        <h1>Search for an FA Artist</h1>
+        <form action="/results" method="post">
+            <div class="form-group">
+                <input type="text" class="form-control" id="artistName" name="artist_name" placeholder="Type the name of an FA artist" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+		<a href="{{ url_for('home') }}" class="btn btn-secondary mt-3">Back to Home</a>
+    </div>
+{% include '_bottom_bar.html' %}
+<script>
+	document.addEventListener('DOMContentLoaded', adjustBottomMargin);
+    document.addEventListener('bottomBarLoaded', adjustBottomMargin);
+
+    function adjustBottomMargin() {
+        var bottomBar = document.querySelector('.bottom-bar');
+        var mainContent = document.querySelector('.main-content');
+
+        if (bottomBar && mainContent) {
+            // Function to adjust padding
+            function adjustPadding() {
+                var bottomBarHeight = bottomBar.offsetHeight;
+                mainContent.style.paddingBottom = bottomBarHeight + 'px';
+            }
+
+            // Create an observer instance
+            var observer = new MutationObserver(function(mutations) {
+                mutations.forEach(adjustPadding); // Adjust padding on each mutation
+            });
+
+            // Observer configuration
+            var config = { attributes: true, childList: true, subtree: true };
+
+            // Start observing the bottom bar for configured mutations
+            observer.observe(bottomBar, config);
+
+            // Initial padding adjustment
+            adjustPadding();
+        }
+    }
+</script>
+</body>
+</html>

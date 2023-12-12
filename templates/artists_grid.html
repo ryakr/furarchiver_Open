@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Artists Grid</title>
+    <style>
+        html, body {
+			margin: 0;
+			padding: 0;
+		}
+
+		/* Existing styles... */
+		body {
+			font-family: Arial, sans-serif;
+		}
+
+		.top-nav {
+			background-color: #333;
+			overflow: hidden;
+			position: fixed;
+			width: 100%;
+			top: 0;
+			z-index: 1000;
+		}
+
+		.top-nav ul {
+			list-style-type: none;
+			margin: 0;
+			padding: 0;
+		}
+
+		.top-nav li {
+			float: left;
+		}
+
+		.top-nav li a {
+			display: block;
+			color: white;
+			text-align: center;
+			padding: 14px 16px;
+			text-decoration: none;
+		}
+
+		.top-nav li a:hover {
+			background-color: #ddd;
+			color: black;
+		}
+
+		/* Make sure the content starts below the navigation bar */
+		.content {
+			padding-top: 50px; /* Adjust this value if your navigation bar is taller or shorter */
+		}
+
+        .pagination-controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .pagination-controls a {
+            margin: 0 5px;
+            text-decoration: none;
+            color: #000;
+        }
+
+        .pagination-controls a.current-page {
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        .artists-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+			grid-gap: 20px;
+			padding: 20px; /* This adds padding around the grid */
+			margin: 0 auto; /* This centers the grid in the available space */
+			max-width: 1200px; /* You can set a max width to avoid overly stretched layouts on very wide screens */
+		}
+
+        .artist-item {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .artist-name {
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        .artist-image {
+            width: 100%;
+            height: 150px; /* Adjust the height to match the width for a square */
+            background-position: center;
+            background-size: cover;
+            transition: transform .3s ease;
+        }
+
+        .artist-item:hover .artist-image {
+            transform: scale(1.1);
+        }
+
+        /* Add other CSS rules as needed to match the design in the image */
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+
+    <div class="content">
+        <div class="pagination-controls">
+            {% if paginated_artists.has_prev %}
+                <a href="{{ url_for('artists_grid', page=1) }}">First</a>
+                <a href="{{ url_for('artists_grid', page=paginated_artists.prev_num) }}">Previous</a>
+            {% endif %}
+            {% for num in paginated_artists.iter_pages() %}
+                {% if num %}
+                    {% if num == paginated_artists.page %}
+                        <a class="current-page" href="#">{{ num }}</a>
+                    {% else %}
+                        <a href="{{ url_for('artists_grid', page=num) }}">{{ num }}</a>
+                    {% endif %}
+                {% else %}
+                    <span>...</span>
+                {% endif %}
+            {% endfor %}
+            {% if paginated_artists.has_next %}
+                <a href="{{ url_for('artists_grid', page=paginated_artists.next_num) }}">Next</a>
+                <a href="{{ url_for('artists_grid', page=paginated_artists.pages) }}">Last</a>
+            {% endif %}
+        </div>
+
+        <div class="artists-grid">
+            {% for artist, image_url in artist_images %}
+                <div class="artist-item">
+                    <a href="{{ url_for('search_results', artist_name=artist.name) }}">
+                        <div class="artist-image" style="background-image: url('{{ image_url }}');"></div>
+                    </a>
+                    <p class="artist-name">{{ artist.name }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% include '_bottom_bar.html' %}
+</body>
+</html>

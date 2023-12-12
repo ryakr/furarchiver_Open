@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results - Archive Downloader</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+	<style>
+    .main-content {
+        margin-bottom: 60px; /* Adjust this based on the estimated height of your bottom bar */
+    }
+	.image-container {
+		display: inline-block; /* or 'block' depending on your layout */
+		position: relative;
+		width: 300px; /* Adjust as needed */
+		height: auto;
+	}
+
+	.image-info {
+		position: absolute;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5); /* Gray fade effect */
+		color: white;
+		width: 100%;
+		text-align: center;
+		padding: 10px;
+		visibility: hidden;
+		opacity: 0;
+		transition: visibility 0s, opacity 0.5s linear;
+	}
+
+	.image-container:hover .image-info {
+		visibility: visible;
+		opacity: 1;
+	}
+
+	</style>
+
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <div class="container mt-5 main-content">
+        <h1>Search Results</h1>
+		<nav>
+			<ul class="pagination">
+				<!-- First Page Link -->
+				<li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+					<a class="page-link" href="{{ url_for('search_results', page=1, artist_name=artist_name, sort_by=sort_by) }}">First</a>
+				</li>
+
+				<!-- Previous Page Link -->
+				<li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+					<a class="page-link" href="{{ url_for('search_results', page=current_page-1, artist_name=artist_name, sort_by=sort_by) }}">Previous</a>
+				</li>
+
+				<!-- Page Numbers -->
+				{% for i in range(current_page - 5, current_page + 6) %}
+					{% if i > 0 and i <= total_pages %}
+						<li class="page-item {% if i == current_page %}active{% endif %}">
+							<a class="page-link" href="{{ url_for('search_results', page=i, artist_name=artist_name, sort_by=sort_by) }}">{{ i }}</a>
+						</li>
+					{% endif %}
+				{% endfor %}
+
+				<!-- Next Page Link -->
+				<li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+					<a class="page-link" href="{{ url_for('search_results', page=current_page+1, artist_name=artist_name, sort_by=sort_by) }}">Next</a>
+				</li>
+
+				<!-- Last Page Link -->
+				<li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+					<a class="page-link" href="{{ url_for('search_results', page=total_pages, artist_name=artist_name, sort_by=sort_by) }}">Last</a>
+				</li>
+				<form action="{{ url_for('search_results') }}" method="get">
+					<input type="hidden" name="artist_name" value="{{ artist_name }}">
+
+					<!-- Dropdown for Sorting -->
+					<select name="sort_by" class="form-control" onchange="this.form.submit()">
+						<option value="id" {% if sort_by == 'id' %}selected{% endif %}>Sort by ID</option>
+						<option value="name" {% if sort_by == 'name' %}selected{% endif %}>Sort by Name</option>
+						<option value="score" {% if sort_by == 'score' %}selected{% endif %}>Sort by Score (Low->High)</option>
+						<option value="score_desc" {% if sort_by == 'score_desc' %}selected{% endif %}>Sort by Score (High->Low)</option>
+						<!-- Add more sorting options here based on your database fields -->
+					</select>
+
+					<!-- Include other necessary fields -->
+				</form>
+			</ul>
+		</nav>
+		
+
+
+        {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+			<form action="/download" method="post" id="downloadForm">
+				<input type="hidden" name="artist_name" value="{{ artist_name }}">
+				<button type="submit" class="btn btn-primary">Request Update / Initial Download</button>
+			</form>
+        {% else %}
+			<h3>Files for artist: {{ artist_name }}</h3>
+			<div class="row">
+				{% for file_url, image in zipped_files %}
+					<div class="image-container">
+						<a href="{{ file_url }}" target="_blank">
+							<img src="{{ file_url }}" class="thumbnail img-fluid">
+							<div class="image-info">
+								<span>ID: {{ image.id }}</span>
+								<span>Score: {{ image.score }}</span>
+							</div>
+						</a>
+					</div>
+				{% endfor %}
+			</div>
+			<form action="/download" method="post" id="downloadForm">
+				<input type="hidden" name="artist_name" value="{{ artist_name }}">
+				<button type="submit" class="btn btn-primary">Request Update / Initial Download</button>
+			</form>
+        {% endif %}
+		<a href="{{ url_for('search_page') }}" class="btn btn-secondary mt-3">New Search</a>
+		<a href="{{ url_for('home') }}" class="btn btn-secondary mt-3">Back to Home</a>
+    </div>
+{% include '_bottom_bar.html' %}
+<script>
+	document.getElementById('downloadForm').onsubmit = function(e) {
+		e.preventDefault();
+		var formData = new FormData(this);
+		var artistName = document.querySelector('input[name="artist_name"]').value; // Make sure this selector matches your input field for artist name
+		formData.append('artist_name', artistName); // Append the artist name to the FormData object
+
+		fetch('/download', {
+			method: 'POST',
+			body: formData // Send the formData with the artist name
+		}).then(response => response.json())
+		.then(data => {
+			alert(data.success); // Or update the bottom bar with the new queue status
+		}).catch(error => {
+			console.error('Error:', error);
+		});
+	};
+
+    document.addEventListener('DOMContentLoaded', adjustBottomMargin);
+    document.addEventListener('bottomBarLoaded', adjustBottomMargin);
+
+    function adjustBottomMargin() {
+        var bottomBar = document.querySelector('.bottom-bar');
+        var mainContent = document.querySelector('.main-content');
+
+        if (bottomBar && mainContent) {
+            // Function to adjust padding
+            function adjustPadding() {
+                var bottomBarHeight = bottomBar.offsetHeight;
+                mainContent.style.paddingBottom = bottomBarHeight + 'px';
+            }
+
+            // Create an observer instance
+            var observer = new MutationObserver(function(mutations) {
+                mutations.forEach(adjustPadding); // Adjust padding on each mutation
+            });
+
+            // Observer configuration
+            var config = { attributes: true, childList: true, subtree: true };
+
+            // Start observing the bottom bar for configured mutations
+            observer.observe(bottomBar, config);
+
+            // Initial padding adjustment
+            adjustPadding();
+        }
+    }
+</script>
+</body>
+</html>
