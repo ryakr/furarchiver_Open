@@ -21,7 +21,7 @@ MAPPING = {
 def maintenance_tasks(ROOT_PATH, FA_FOLDER):
     MODELS_FOLDER = os.path.join(ROOT_PATH, 'models')
     print("Running maintenance task...")
-    #find_images_and_update_tags()
+    find_images_and_update_tags()
     print("Updating aesthetic scores...")
     GetAestheticScore(MODELS_FOLDER, FA_FOLDER)
     print("Done!")
@@ -62,7 +62,7 @@ def find_images_and_update_tags():
 
     # Step 4: Apply returned tags
     for image in tqdm(images_without_tags):
-        time.sleep(0.6)
+        time.sleep(1)
         tags = get_tags_for_md5(image.md5, image)
         print(image.md5)
         iteration = image.checked_count + 1
