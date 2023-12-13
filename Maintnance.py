@@ -6,6 +6,9 @@ from Scorer.AE_Predictor import AestheticPredictor
 import os
 from tqdm import tqdm
 import sys
+import gzip
+import shutil
+import pandas as pd
 
 MAPPING = {
     "general": 0, "gen": 0,
@@ -17,6 +20,26 @@ MAPPING = {
     "meta": 7,
     "lore": 8, "lor": 8,
 }
+
+def download_and_extract_csv(url, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # Download the file
+    response = requests.get(url, stream=True)
+    if response.status_code != 200:
+        raise ValueError(f"Failed to download file: Status code {response.status_code}")
+
+    # Save the gzipped file
+    gzipped_file = output_path + ".gz"
+    print(f"Saving gzipped file to {gzipped_file}")
+    with open(gzipped_file, 'wb') as f:
+        f.write(response.content)
+    print("Extracting gzipped file...")
+    # Extract the gzipped file
+    with gzip.open(gzipped_file, 'rb') as f_in:
+        with open(output_path, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    
+    print(f"File downloaded and extracted to {output_path}")
 
 def maintenance_tasks(ROOT_PATH, FA_FOLDER):
     MODELS_FOLDER = os.path.join(ROOT_PATH, 'models')
@@ -53,7 +76,40 @@ def GetAestheticScore(FA_FOLDER, app):
         pred.close()
         del pred
 
-def find_images_and_update_tags(app):
+def extract_md5_to_file(csv_path, md5_file_path):
+    print(f"Extracting MD5 values from {csv_path}...")
+    df = pd.read_csv(csv_path, usecols=['md5'])  # Load only the 'md5' column
+    print(f"Saving MD5 values to {md5_file_path}...")
+    df.to_csv(md5_file_path, index=False, header=False)
+    print(f"MD5 values saved to {md5_file_path}")
+
+def delete_file(file_path):
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print(f"Deleted file: {file_path}")
+    else:
+        print(f"File not found: {file_path}")
+
+def is_md5_in_file(md5, md5_file_path):
+    with open(md5_file_path, 'r') as file:
+        if md5 in file.read():
+            return True
+    return False
+
+def prepFIAUT(csv_path, md5_file_path):
+    if not os.path.exists(md5_file_path):
+        download_and_extract_csv("https://e621.net/db_export/posts-2023-12-12.csv.gz", csv_path)
+        extract_md5_to_file(csv_path, md5_file_path)
+    if os.path.exists(csv_path):
+        delete_file(csv_path)
+    if os.path.exists(csv_path + ".gz"):
+        delete_file(csv_path + ".gz")
+
+
+def find_images_and_update_tags(app, use_csv=False):
+    csv_path = os.path.join(app.root_path, 'CSV', 'posts-2023-12-12.csv')
+    md5_path = os.path.join(app.root_path, 'CSV', 'md5s.csv')
+    prepFIAUT(csv_path, md5_path)
     with app.app_context():
         # Step 1: Find images with MD5 and missing tags
         images_without_tags = db.session.query(Image).\
@@ -67,28 +123,29 @@ def find_images_and_update_tags(app):
         # Step 4: Apply returned tags
         total_images = len(images_without_tags)
         for index, image in enumerate(images_without_tags):
-            time.sleep(1)
-            tags = get_tags_for_md5(image.md5, image)
-            print(image.md5)
-            iteration = image.checked_count + 1
-            if iteration >= 5:
-                image.check_again = False
-            image.checked_count = iteration
-            for tag_name, category_int in tags.items():
-                tag = Tag.query.filter_by(tag_name=tag_name).first()
-                if not tag:
-                    # Create new tag if it doesn't exist
-                    latest_id = Tag.query.order_by(Tag.id.desc()).first()
-                    new_id = (latest_id.id + 1) if latest_id else 1
-                    tag = Tag(id=new_id, tag_name=tag_name, count=1, category=category_int)
-                    db.session.add(tag)
-                    db.session.commit()
-                countz = tag.count + 1
-                image.tags.append(tag)
-                tag.count = countz
+            if is_md5_in_file(image.md5, md5_path) or not use_csv:
+                time.sleep(1)
+                tags = get_tags_for_md5(image.md5, image)
+                print(image.md5)
+                iteration = image.checked_count + 1
+                if iteration >= 2:
+                    image.check_again = False
+                image.checked_count = iteration
+                for tag_name, category_int in tags.items():
+                    tag = Tag.query.filter_by(tag_name=tag_name).first()
+                    if not tag:
+                        # Create new tag if it doesn't exist
+                        latest_id = Tag.query.order_by(Tag.id.desc()).first()
+                        new_id = (latest_id.id + 1) if latest_id else 1
+                        tag = Tag(id=new_id, tag_name=tag_name, count=1, category=category_int)
+                        db.session.add(tag)
+                        db.session.commit()
+                    countz = tag.count + 1
+                    image.tags.append(tag)
+                    tag.count = countz
+                db.session.commit()
             yield (index + 1), total_images
         
-        db.session.commit()
 
 def get_tags_for_md5(md5_values, imagedb):
     URL = f"https://e621.net/posts.json?tags=md5:{md5_values}"

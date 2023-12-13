@@ -75,7 +75,7 @@ def run_aesthetic_scoring():
 
 def run_tag_update():
     task_info['tag_update']['start_time'] = datetime.now() 
-    for current, total in Maintnance.find_images_and_update_tags(app):
+    for current, total in Maintnance.find_images_and_update_tags(app, use_csv=True):
         task_info['tag_update']['current'] = current
         task_info['tag_update']['total'] = total
     task_info['tag_update']['current'] = total
