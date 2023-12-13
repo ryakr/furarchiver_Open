@@ -2,6 +2,7 @@ from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, d
 import time
 import requests
 import json
+from Scorer.AE_Predictor import AestheticPredictor
 import os
 from tqdm import tqdm
 import sys
@@ -26,9 +27,6 @@ def maintenance_tasks(ROOT_PATH, FA_FOLDER):
     print("Done!")
 
 def GetAestheticScore(FA_FOLDER, app):
-    #check if AestheticPredictor is imported, if not, import it
-    if 'AestheticPredictor' not in sys.modules:
-        import Scorer.AE_Predictor as AestheticPredictor
     with app.app_context():
         fold = sys.path[0]
         print(f"{fold}\models\e621-l14-rhoLoss.ckpt")
@@ -50,7 +48,7 @@ def GetAestheticScore(FA_FOLDER, app):
                 image.scored = True
             except Exception as e:
                 print(e)
-            yield (index + 1) / total_images * 100
+            yield (index + 1), total_images
         db.session.commit()
         pred.close()
         del pred
@@ -88,7 +86,7 @@ def find_images_and_update_tags(app):
                 countz = tag.count + 1
                 image.tags.append(tag)
                 tag.count = countz
-            yield (index + 1) / total_images * 100
+            yield (index + 1), total_images
         
         db.session.commit()
 

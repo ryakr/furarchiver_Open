@@ -11,7 +11,7 @@ from tqdm import tqdm
 import math
 import Maintnance
 from threading import Thread
-import datetime
+from datetime import datetime
 import signal
 import sys
 
@@ -42,46 +42,67 @@ def query_database_with_sorting(query, sort_by):
         return query.order_by(Image.id)
 
 task_info = {
-    'aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None},
-    'tag_update': {'current': 0, 'total': 0, 'start_time': None}
+    'aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
+    'tag_update': {'current': 0, 'total': 0, 'start_time': None, 'running': False}
 }
 
 def calculate_estimated_time(task_key):
-    info = task_info[task_key]
-    if info['current'] > 0 and info['start_time']:
-        elapsed_time = (datetime.now() - info['start_time']).total_seconds()
-        total_time = (elapsed_time / info['current']) * info['total']
-        remaining_time = total_time - elapsed_time
-        return remaining_time  # Returns time in seconds
+    info = task_info.get(task_key)
+    
+    if info is not None and isinstance(info, dict):
+        current = info.get('current', 0)
+        start_time = info.get('start_time')
+        total = info.get('total', 0)
+
+        if current > 0 and start_time:
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            total_time = (elapsed_time / current) * total
+            remaining_time = total_time - elapsed_time
+            return remaining_time  # Returns time in seconds
+    
     return None
 
 
+
 def run_aesthetic_scoring():
-    for progress in Maintnance.GetAestheticScore(FA_FOLDER, app):
-        task_info['aesthetic_scoring'] = progress
-    task_info['aesthetic_scoring'] = 100  # Mark as complete
+    print("Starting aesthetic scoring...")
+    task_info['aesthetic_scoring']['start_time'] = datetime.now()  # Set the start time
+    for current, total in Maintnance.GetAestheticScore(FA_FOLDER, app):
+        task_info['aesthetic_scoring']['current'] = current
+        task_info['aesthetic_scoring']['total'] = total
+    task_info['aesthetic_scoring']['current'] = total
+    task_info['aesthetic_scoring']['running'] = False
 
 def run_tag_update():
-    for progress in Maintnance.find_images_and_update_tags(app):
-        task_info['tag_update'] = progress
-    task_info['tag_update'] = 100  # Mark as complete
+    task_info['tag_update']['start_time'] = datetime.now() 
+    for current, total in Maintnance.find_images_and_update_tags(app):
+        task_info['tag_update']['current'] = current
+        task_info['tag_update']['total'] = total
+    task_info['tag_update']['current'] = total
+    task_info['tag_update']['running'] = False
 
 @app.route('/start_aesthetic_scoring')
 def start_aesthetic_scoring():
-    if task_info['aesthetic_scoring'] == 0:  # Only start if not already running
+    print(task_info['aesthetic_scoring'])
+    if task_info['aesthetic_scoring']['running'] == False: 
+        task_info['aesthetic_scoring']['running'] = True
         Thread(target=run_aesthetic_scoring).start()
     return jsonify({'status': 'started'})
 
 @app.route('/aesthetic_scoring_progress')
 def aesthetic_scoring_progress():
+    print(task_info['aesthetic_scoring'])
     progress = task_info['aesthetic_scoring']
+    current = progress.get('current', 0)
+    total = progress.get('total', 0)
     est_time = calculate_estimated_time('aesthetic_scoring')
-    return jsonify({'current': progress['current'], 'total': progress['total'], 'est_time': est_time})
+    return jsonify({'current': current, 'total': total, 'est_time': est_time})
 
 
 @app.route('/start_tag_update')
 def start_tag_update():
-    if task_info['tag_update'] == 0:  # Only start if not already running
+    if task_info['tag_update']['running'] == False:  # Only start if not already running
+        task_info['tag_update']['running'] = True
         Thread(target=run_tag_update).start()
     return jsonify({'status': 'started'})
 
