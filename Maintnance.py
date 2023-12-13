@@ -123,14 +123,17 @@ def find_images_and_update_tags(app, use_csv=False):
         # Step 4: Apply returned tags
         total_images = len(images_without_tags)
         for index, image in enumerate(images_without_tags):
+            iteration = image.checked_count + 1
+            if iteration >= 2:
+                image.check_again = False
+            image.checked_count = iteration
             if is_md5_in_file(image.md5, md5_path) or not use_csv:
                 time.sleep(1)
                 tags = get_tags_for_md5(image.md5, image)
                 print(image.md5)
-                iteration = image.checked_count + 1
-                if iteration >= 2:
+                if len(tags) > 0:
+                    print(f"Found {len(tags)} tags for {image.md5}")
                     image.check_again = False
-                image.checked_count = iteration
                 for tag_name, category_int in tags.items():
                     tag = Tag.query.filter_by(tag_name=tag_name).first()
                     if not tag:

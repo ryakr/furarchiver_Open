@@ -1,0 +1,11 @@
+beautifulsoup4
+Flask
+flask_sqlalchemy
+pandas
+Pillow
+Requests
+torch
+tqdm
+transformers
+Unidecode
+Transformers
