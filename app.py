@@ -81,6 +81,13 @@ def run_tag_update():
     task_info['tag_update']['current'] = total
     task_info['tag_update']['running'] = False
 
+@app.route('/update_all_artists')
+def update_all_artists():
+    artists = Artist.query.all()
+    for artist in artists:
+        downloader.add_to_queue(artist.name)
+    return jsonify({'status': 'All artists added to download queue'})
+
 @app.route('/start_aesthetic_scoring')
 def start_aesthetic_scoring():
     print(task_info['aesthetic_scoring'])

@@ -108,7 +108,10 @@ class Downloader:
         self.db_session.commit()
 
     def add_to_queue(self, artist_name):
-        with self.condition:  
+        with self.condition: 
+            if artist_name.strip().lower() in self.queue:
+                print(f"{artist_name} is already in the queue.")
+                return 
             print(f"Added {artist_name} to download queue")
             artist_key = artist_name.strip().lower()
             self.download_queue.put(artist_key)  # Add to the thread-safe queue
@@ -174,11 +177,13 @@ class Downloader:
                 # Process download outside of the locked section
                 self.download_artist_wrapped(artist_key, self.download_destination)
                 self.download_queue.task_done()
+                self.queue.remove(artist_key)
 
         for _ in range(3):
             thread = threading.Thread(target=worker)
             thread.start()
             self.threads.append(thread)
+        self.threads_active = True
 
     def stop_threads(self):
         for _ in self.threads:
@@ -188,6 +193,7 @@ class Downloader:
             thread.join()
 
         self.threads = []
+        self.threads_active = False
 
 
     def download_artist(self, artist_key, destination):
@@ -195,7 +201,7 @@ class Downloader:
         print(f"Downloading {artist_key} from {artist_url}")
         self.download_status[artist_key]["status"] = "Contacting Back End"
         response = requests.get(artist_url, proxies=self.proxies, timeout=120)
-        print(response.status_code)
+        print(f"{artist_key}: {response.status_code}")
         if response.status_code == 404:
             print(f"Artist {artist_key} not found.")
             return
