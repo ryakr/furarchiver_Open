@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Maintenance</title>
+    <!-- Include necessary styles and scripts -->
+    <style>
+        .progress-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <h1>Maintenance Page</h1>
+    <div class="progress-container">
+        <button id="startAestheticScoring">Start Aesthetic Scoring</button>
+        <progress id="progressBarAesthetic" value="0" max="100"></progress>
+        <span id="progressBarAestheticInfo"></span>
+    </div>
+
+    <div class="progress-container">
+        <button id="startTagUpdate">Start Tag Update</button>
+        <progress id="progressBarTag" value="0" max="100"></progress>
+        <span id="progressBarTagInfo"></span>
+    </div>
+    <script>
+        function updateProgressInfo(progressBarId, current, total, estTime) {
+            var progressBar = document.getElementById(progressBarId);
+            progressBar.value = (current / total) * 100;
+
+            var progressText = `Image ${current}/${total}`;
+            if (estTime) {
+                var estMinutes = Math.floor(estTime / 60);
+                var estSeconds = Math.floor(estTime % 60);
+                progressText += ` | Est time: ${estMinutes}m ${estSeconds}s`;
+            }
+            document.getElementById(progressBarId + 'Info').innerText = progressText;
+        }
+
+        function startTask(startUrl, progressUrl, progressBarId) {
+            // Start the task
+            fetch(startUrl).then(response => response.json()).then(data => {
+                if (data.status === 'started') {
+                    // Poll for progress
+                    var progressCheck = setInterval(function() {
+                        fetch(progressUrl).then(response => response.json()).then(data => {
+                            updateProgressInfo(progressBarId, data.current, data.total, data.est_time);
+                            if (data.current >= data.total) {
+                                clearInterval(progressCheck); // Stop polling when complete
+                            }
+                        });
+                    }, 1000); // Adjust polling interval as needed
+                }
+            });
+        }
+
+        document.getElementById('startAestheticScoring').addEventListener('click', function() {
+            startTask('/start_aesthetic_scoring', '/aesthetic_scoring_progress', 'progressBarAesthetic');
+        });
+
+        document.getElementById('startTagUpdate').addEventListener('click', function() {
+            startTask('/start_tag_update', '/tag_update_progress', 'progressBarTag');
+        });
+    </script>
+    {% include '_bottom_bar.html' %}
+</body>
+</html>

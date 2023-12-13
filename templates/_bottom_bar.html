@@ -5,39 +5,81 @@
     {% endfor %}
 </div>
 <script>
-// This script could be used to periodically update the bottom bar with the queue status
-function updateBottomBar() {
-    fetch('/queue-status').then(response => response.json()).then(data => {
-        const bottomBar = document.querySelector('.bottom-bar');
-        bottomBar.innerHTML = ''; // Clear current content
-        data.forEach(task => {
-            const taskDiv = document.createElement('div');
-            taskDiv.textContent = `${task.artist_info} - ${task.status} | ${task.downloaded_files} / ${task.total_files} | ${task.speed} | ${task.current_file_percent}%`;
-            bottomBar.appendChild(taskDiv);
-        });
-    }).catch(error => {
-        console.error('Error updating bottom bar:', error);
+window.onload = function() {
+    var eventSource;
+    var isTabActive = true;
+
+    function openEventSource() {
+        eventSource = new EventSource('/queue-status');
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            updateBottomBar(data);
+        };
+
+        eventSource.onerror = function(err) {
+            console.error('EventSource failed:', err);
+            eventSource.close();
+        };
+    }
+
+    function closeEventSource() {
+        if (eventSource) {
+            eventSource.close();
+            console.log("EventSource closed due to inactive tab.");
+        }
+    }
+
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden) {
+            closeEventSource();
+            isTabActive = false;
+        } else {
+            openEventSource();
+            isTabActive = true;
+        }
+    });
+
+    // Initially open the event source
+    openEventSource();
+};
+
+function updateBottomBar(data) {
+    if (!data) return; // Do nothing if no data is provided
+
+    const bottomBar = document.querySelector('.bottom-bar');
+    bottomBar.innerHTML = '';
+
+    data.forEach(task => {
+        const taskDiv = document.createElement('div');
+        taskDiv.textContent = `${task.artist_info} - ${task.status} | ${task.downloaded_files} / ${task.total_files} | ${task.speed} | ${task.current_file_percent}%`;
+        bottomBar.appendChild(taskDiv);
     });
 }
 
-window.onload = updateBottomBar;
-
-// Call updateBottomBar at regular intervals
-setInterval(updateBottomBar, 5000);  // Every 5 seconds
 </script>
 <script>
     document.dispatchEvent(new CustomEvent('bottomBarLoaded'));
 </script>
 
 <style>
-.bottom-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background-color: #333;
-    color: white;
-    text-align: center;
-    padding: 10px 0;
-}
+    html, body {
+			margin: 0;
+			padding: 0;
+		}
+
+		/* Existing styles... */
+		body {
+			font-family: Arial, sans-serif;
+		}
+    .bottom-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #333;
+        color: white;
+        text-align: center;
+        padding: 10px 0;
+    }
 </style>

@@ -52,7 +52,7 @@ def sanitize_filename(filename):
 
 # Downloader class
 class Downloader:
-    def __init__(self, base_url, socks_proxy_port, config_file, db_session, app):
+    def __init__(self, base_url, socks_proxy_port, config_file, db_session, FA_FOLDER, app):
         self.base_url = base_url
         self.socks_proxy_port = socks_proxy_port
         self.proxies = {
@@ -66,6 +66,12 @@ class Downloader:
         self.db_session = db_session
         self.queueactive = False
         self.app = app
+        self.threads = []
+        self.threads_active = False
+        self.END_OF_QUEUE = object()
+        self.download_destination = FA_FOLDER
+        self.condition = threading.Condition()  # Threading condition
+        self.start_threads() 
 
     def add_artist_to_db(self, artist_name):
         artist = Artist.query.filter_by(name=artist_name).first()
@@ -102,17 +108,21 @@ class Downloader:
         self.db_session.commit()
 
     def add_to_queue(self, artist_name):
-        print(f"Added {artist_name} to download queue")
-        artist_key = artist_name.strip().lower()
-        self.download_queue.put(artist_key)  # Add to the thread-safe queue
-        self.queue.append(artist_key)  # Keep in status tracking list
-        self.download_status[artist_key] = {
-            "total_files": 0,
-            "downloaded_files": 0,
-            "speed": "0 KB/s",
-            "status": "pending",
-            "current_file_percent": 0.0
-        }
+        with self.condition:  
+            print(f"Added {artist_name} to download queue")
+            artist_key = artist_name.strip().lower()
+            self.download_queue.put(artist_key)  # Add to the thread-safe queue
+            self.queue.append(artist_key)  # Keep in status tracking list
+            self.download_status[artist_key] = {
+                "total_files": 0,
+                "downloaded_files": 0,
+                "speed": "0 KB/s",
+                "status": "pending",
+                "current_file_percent": 0.0
+            }
+            if not self.threads_active:
+                self.start_threads()
+            self.condition.notify()
 
 
     def get_queue(self):
@@ -134,47 +144,56 @@ class Downloader:
         with self.app.app_context():
             self.download_artist(artist_key, download_destination)
 
-    def process_queue(self, download_destination):
-        if not download_destination:
+    def process_queue(self):
+        if not self.threads_active:
+            self.start_threads()
+
+        if not self.download_destination:
             print("Download destination is not set.")
             return
 
         self.queueactive = True
 
-        # Worker function that processes items from the queue
+        while not self.download_queue.empty():
+            time.sleep(1)  # Wait for the queue to empty
+
+        self.queueactive = False
+        self.stop_threads()  # Stop threads after the queue is empty
+
+
+    def start_threads(self):
         def worker():
             while True:
-                try:
-                    artist_key = self.download_queue.get(timeout=1)
-                    self.download_artist_wrapped(artist_key, download_destination)
-                    self.download_queue.task_done()
-                    self.queue.remove(artist_key)
-                except queue.Empty:
-                    if not self.queueactive:
+                with self.condition:  # Acquire the condition lock
+                    while self.download_queue.empty():  # Check if queue is empty
+                        self.condition.wait()  # Wait for an item to be added
+                    artist_key = self.download_queue.get()
+                    if artist_key is self.END_OF_QUEUE:
                         break
 
+                # Process download outside of the locked section
+                self.download_artist_wrapped(artist_key, self.download_destination)
+                self.download_queue.task_done()
 
-        # List to keep track of threads
-        threads = []
-
-        # Start threads up to the maximum number
         for _ in range(3):
             thread = threading.Thread(target=worker)
             thread.start()
-            threads.append(thread)
+            self.threads.append(thread)
 
-        # Wait for all threads to complete
-        for thread in threads:
+    def stop_threads(self):
+        for _ in self.threads:
+            self.download_queue.put(self.END_OF_QUEUE)
+
+        for thread in self.threads:
             thread.join()
 
-        self.queueactive = False
-
-
+        self.threads = []
 
 
     def download_artist(self, artist_key, destination):
         artist_url = urljoin(self.base_url, artist_key)
         print(f"Downloading {artist_key} from {artist_url}")
+        self.download_status[artist_key]["status"] = "Contacting Back End"
         response = requests.get(artist_url, proxies=self.proxies, timeout=120)
         print(response.status_code)
         if response.status_code == 404:
@@ -187,6 +206,7 @@ class Downloader:
         elif response.status_code != 200:
             print(f"Error downloading {artist_key}: {response.status_code}")
             return
+        self.download_status[artist_key]["status"] = "BackEnd Got"
         artist = self.add_artist_to_db(artist_key)
         soup = BeautifulSoup(response.content, 'html.parser')
 

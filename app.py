@@ -1,6 +1,6 @@
 import os
 from os.path import splitext
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, Response, url_for, send_from_directory
 from Downloader import Downloader
 from flask_sqlalchemy import SQLAlchemy
 from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, db
@@ -10,6 +10,11 @@ import time
 from tqdm import tqdm
 import math
 import Maintnance
+from threading import Thread
+import datetime
+import signal
+import sys
+
 app = Flask(__name__)
 base_url = "http://g6jy5jkx466lrqojcngbnksugrcfxsl562bzuikrka5rv7srgguqbjid.onion/fa/"
 socks_proxy_port = "9150"
@@ -18,10 +23,10 @@ QueueActive = False
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///FurArchiver.db'
 db.init_app(app)
-
-# Create an instance of your Downloader
-downloader = Downloader(base_url, socks_proxy_port, config_file, db.session, app)
 FA_FOLDER = os.path.join(app.root_path, 'FA')
+# Create an instance of your Downloader
+downloader = Downloader(base_url, socks_proxy_port, config_file, db.session, FA_FOLDER, app)
+
 
 def query_database_with_sorting(query, sort_by):
     if sort_by == 'name':
@@ -35,6 +40,58 @@ def query_database_with_sorting(query, sort_by):
             return query.order_by(Image.score.desc())
     else:  # Default sorting
         return query.order_by(Image.id)
+
+task_info = {
+    'aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None},
+    'tag_update': {'current': 0, 'total': 0, 'start_time': None}
+}
+
+def calculate_estimated_time(task_key):
+    info = task_info[task_key]
+    if info['current'] > 0 and info['start_time']:
+        elapsed_time = (datetime.now() - info['start_time']).total_seconds()
+        total_time = (elapsed_time / info['current']) * info['total']
+        remaining_time = total_time - elapsed_time
+        return remaining_time  # Returns time in seconds
+    return None
+
+
+def run_aesthetic_scoring():
+    for progress in Maintnance.GetAestheticScore(FA_FOLDER, app):
+        task_info['aesthetic_scoring'] = progress
+    task_info['aesthetic_scoring'] = 100  # Mark as complete
+
+def run_tag_update():
+    for progress in Maintnance.find_images_and_update_tags(app):
+        task_info['tag_update'] = progress
+    task_info['tag_update'] = 100  # Mark as complete
+
+@app.route('/start_aesthetic_scoring')
+def start_aesthetic_scoring():
+    if task_info['aesthetic_scoring'] == 0:  # Only start if not already running
+        Thread(target=run_aesthetic_scoring).start()
+    return jsonify({'status': 'started'})
+
+@app.route('/aesthetic_scoring_progress')
+def aesthetic_scoring_progress():
+    progress = task_info['aesthetic_scoring']
+    est_time = calculate_estimated_time('aesthetic_scoring')
+    return jsonify({'current': progress['current'], 'total': progress['total'], 'est_time': est_time})
+
+
+@app.route('/start_tag_update')
+def start_tag_update():
+    if task_info['tag_update'] == 0:  # Only start if not already running
+        Thread(target=run_tag_update).start()
+    return jsonify({'status': 'started'})
+
+@app.route('/tag_update_progress')
+def tag_update_progress():
+    progress = task_info['tag_update']
+    est_time = calculate_estimated_time('tag_update')
+    return jsonify({'current': progress['current'], 'total': progress['total'], 'est_time': est_time})
+
+
 
 @app.route('/artists')
 def artists_grid():
@@ -59,6 +116,9 @@ def maintenance_route():
     Maintnance.maintenance_tasks(app.root_path, FA_FOLDER)
     return '', 204  # Returns an empty response with a 204 No Content status
 
+@app.route('/maintenance')
+def maintenance():
+    return render_template('maintenance.html')
 
 @app.route('/')
 def home():
@@ -127,7 +187,7 @@ def fa_file(artist_name, filename):
 def download():
     artist_name = request.form.get('artist_name')
     downloader.add_to_queue(artist_name)
-    downloader.process_queue(FA_FOLDER)
+    downloader.process_queue()
     # TODO: Here you might want to trigger the actual download process
     # This could be done in a background thread or a separate process
     return jsonify({'success': f'Download requested for {artist_name}'})
@@ -139,8 +199,13 @@ def queue():
 
 @app.route('/queue-status')
 def queue_status():
-    queue_info = downloader.get_queue()  # This now directly returns the required list of dictionaries
-    return jsonify(queue_info)
+    def generate():
+        while True:
+            queue_info = downloader.get_queue()
+            yield f"data: {json.dumps(queue_info)}\n\n"
+            time.sleep(2)  # Interval between updates
+
+    return Response(generate(), mimetype='text/event-stream')
 
 
 
@@ -161,4 +226,10 @@ with app.app_context():
     # Other setup or initialization code can go here
 
 if __name__ == '__main__':
+    def signal_handler(sig, frame):
+        print("Ctrl + C detected. Stopping...")
+        downloader.stop_threads()  # Stop the threads gracefully
+        sys.exit(0)  # Exit the script
+
+    signal.signal(signal.SIGINT, signal_handler)
     app.run(debug=True, use_reloader=False)
