@@ -8,6 +8,11 @@ from urllib.parse import urljoin, urlparse, unquote
 from unidecode import unidecode
 from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, db
 import hashlib
+import time
+import threading
+import queue
+from flask import current_app
+
 
 # Constants
 BASE_URL = "http://example.onion/fa/"
@@ -47,7 +52,7 @@ def sanitize_filename(filename):
 
 # Downloader class
 class Downloader:
-    def __init__(self, base_url, socks_proxy_port, config_file, db_session):
+    def __init__(self, base_url, socks_proxy_port, config_file, db_session, app):
         self.base_url = base_url
         self.socks_proxy_port = socks_proxy_port
         self.proxies = {
@@ -55,17 +60,17 @@ class Downloader:
             'https': f'socks5h://127.0.0.1:{socks_proxy_port}'
         }
         self.config_file = config_file
+        self.download_queue = queue.Queue()
         self.queue = []
         self.download_status = {}
         self.db_session = db_session
         self.queueactive = False
+        self.app = app
 
     def add_artist_to_db(self, artist_name):
         artist = Artist.query.filter_by(name=artist_name).first()
         if artist is None:
-            latest_artist = Artist.query.order_by(Artist.id.desc()).first()
-            new_id = (latest_artist.id + 1) if latest_artist else 1
-            artist = Artist(id=new_id, name=artist_name)
+            artist = Artist(name=artist_name)
             self.db_session.add(artist)
             try:
                 self.db_session.commit()
@@ -81,9 +86,7 @@ class Downloader:
     def add_image_to_db(self, file_name, file_type, artist):
         image = Image.query.filter_by(file_name=file_name).first()
         if image is None:
-            latest_image = Image.query.order_by(Image.id.desc()).first()
-            new_id = (latest_image.id + 1) if latest_image else 1
-            image = Image(id=new_id, file_name=file_name, file_type=file_type, artist_id=artist.id, checked_count=0, check_again=True)
+            image = Image(file_name=file_name, file_type=file_type, artist_id=artist.id, checked_count=0, check_again=True)
             self.db_session.add(image)
             self.db_session.commit()
         return image
@@ -101,18 +104,19 @@ class Downloader:
     def add_to_queue(self, artist_name):
         print(f"Added {artist_name} to download queue")
         artist_key = artist_name.strip().lower()
-        self.queue.append(artist_key)
+        self.download_queue.put(artist_key)  # Add to the thread-safe queue
+        self.queue.append(artist_key)  # Keep in status tracking list
         self.download_status[artist_key] = {
             "total_files": 0,
             "downloaded_files": 0,
             "speed": "0 KB/s",
-            "status": "pending"
+            "status": "pending",
+            "current_file_percent": 0.0
         }
-        self.download_status[artist_key]["current_file_percent"] = 0.0
+
 
     def get_queue(self):
         status_report = []
-        print(self.queue)
         for artist_key in self.queue:
             status = self.download_status.get(artist_key, {"status": "pending"})
             report = {
@@ -125,22 +129,46 @@ class Downloader:
             }
             status_report.append(report)
         return status_report
-
+    def download_artist_wrapped(self, artist_key, download_destination):
+        # Push the application context
+        with self.app.app_context():
+            self.download_artist(artist_key, download_destination)
 
     def process_queue(self, download_destination):
-        if not self.queue or not download_destination:
-            print("Queue is empty or download destination is not set.")
+        if not download_destination:
+            print("Download destination is not set.")
             return
-        if not self.queueactive:
-            self.queueactive = True
-            while len(self.queue) > 0:
-                print(f"Queue size: {len(self.queue)}")
-                artist_key = self.queue[0]  # Access the first item without removing it
-                self.download_artist(artist_key, download_destination)
-                self.download_status[artist_key]["status"] = "completed"
-                print(f"Downloaded {artist_key}")
-                self.queue.pop(0)  # Remove the item after processing
-            self.queueactive = False
+
+        self.queueactive = True
+
+        # Worker function that processes items from the queue
+        def worker():
+            while True:
+                try:
+                    artist_key = self.download_queue.get(timeout=1)
+                    self.download_artist_wrapped(artist_key, download_destination)
+                    self.download_queue.task_done()
+                    self.queue.remove(artist_key)
+                except queue.Empty:
+                    if not self.queueactive:
+                        break
+
+
+        # List to keep track of threads
+        threads = []
+
+        # Start threads up to the maximum number
+        for _ in range(3):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            threads.append(thread)
+
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        self.queueactive = False
+
 
 
 

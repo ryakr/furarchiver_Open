@@ -20,7 +20,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///FurArchiver.db'
 db.init_app(app)
 
 # Create an instance of your Downloader
-downloader = Downloader(base_url, socks_proxy_port, config_file, db.session)
+downloader = Downloader(base_url, socks_proxy_port, config_file, db.session, app)
 FA_FOLDER = os.path.join(app.root_path, 'FA')
 
 def query_database_with_sorting(query, sort_by):

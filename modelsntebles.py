@@ -3,14 +3,14 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 class Artist(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100))
     other_names = db.relationship('ArtistAlias', backref='artist', lazy=True)
     websites = db.relationship('Website', backref='artist', lazy=True)
     images = db.relationship('Image', backref='artist', lazy=True)
 
 class Image(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     file_name = db.Column(db.String(120))
     file_type = db.Column(db.String(50))
     artist_id = db.Column(db.Integer, db.ForeignKey('artist.id'))
