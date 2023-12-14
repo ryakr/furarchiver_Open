@@ -139,4 +139,35 @@
     </div>
 {% include '_bottom_bar.html' %}
 </body>
+<script>
+    document.addEventListener('DOMContentLoaded', adjustBottomMargin);
+    document.addEventListener('bottomBarLoaded', adjustBottomMargin);
+
+    function adjustBottomMargin() {
+        var bottomBar = document.querySelector('.bottom-bar');
+        var mainContent = document.querySelector('.content');
+
+        if (bottomBar && mainContent) {
+            // Function to adjust padding
+            function adjustPadding() {
+                var bottomBarHeight = bottomBar.offsetHeight;
+                mainContent.style.paddingBottom = bottomBarHeight + 'px';
+            }
+
+            // Create an observer instance
+            var observer = new MutationObserver(function(mutations) {
+                mutations.forEach(adjustPadding); // Adjust padding on each mutation
+            });
+
+            // Observer configuration
+            var config = { attributes: true, childList: true, subtree: true };
+
+            // Start observing the bottom bar for configured mutations
+            observer.observe(bottomBar, config);
+
+            // Initial padding adjustment
+            adjustPadding();
+        }
+    }
+</script>
 </html>
