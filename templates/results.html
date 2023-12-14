@@ -116,6 +116,29 @@
 				<button type="submit" class="btn btn-primary">Request Update / Initial Download</button>
 			</form>
         {% endif %}
+		
+		<!-- Add this form within your results.html template -->
+
+		<form action="{{ url_for('download_artist_images', artist_name=artist_name) }}" method="post">
+			<input type="hidden" name="artist_name" value="{{ artist_name }}">
+
+			<input type="checkbox" name="use_score_threshold" id="use_score_threshold">
+			<label for="use_score_threshold">Use Score Threshold</label><br>
+
+			<label for="score_threshold">Score Threshold:</label>
+			<input type="number" name="score_threshold" id="score_threshold" step="any"><br>
+
+			<input type="radio" name="score_direction" value="above" checked>
+			<label for="above">Above Threshold</label><br>
+			<input type="radio" name="score_direction" value="below">
+			<label for="below">Below Threshold</label><br>
+
+			<input type="checkbox" name="include_tags" id="include_tags">
+			<label for="include_tags">Include Tags</label><br>
+
+			<input type="submit" value="Download Images">
+		</form>
+
 		<a href="{{ url_for('search_page') }}" class="btn btn-secondary mt-3">New Search</a>
 		<a href="{{ url_for('home') }}" class="btn btn-secondary mt-3">Back to Home</a>
     </div>

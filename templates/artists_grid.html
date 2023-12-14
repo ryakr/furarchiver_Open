@@ -144,13 +144,18 @@
     document.addEventListener('bottomBarLoaded', adjustBottomMargin);
 
     function adjustBottomMargin() {
+        // Get the bottom bar and main content elements
         var bottomBar = document.querySelector('.bottom-bar');
         var mainContent = document.querySelector('.content');
 
+        // Make sure the elements exist
         if (bottomBar && mainContent) {
             // Function to adjust padding
             function adjustPadding() {
+                // Get the height of the bottom bar
                 var bottomBarHeight = bottomBar.offsetHeight;
+
+                // Set the bottom padding of the main content
                 mainContent.style.paddingBottom = bottomBarHeight + 'px';
             }
 

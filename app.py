@@ -14,6 +14,7 @@ from threading import Thread
 from datetime import datetime
 import signal
 import sys
+import zipfile
 
 app = Flask(__name__)
 base_url = "http://g6jy5jkx466lrqojcngbnksugrcfxsl562bzuikrka5rv7srgguqbjid.onion/fa/"
@@ -62,7 +63,92 @@ def calculate_estimated_time(task_key):
     
     return None
 
+@app.route('/results/download/<artist_name>', methods=['POST'])
+def download_artist_images(artist_name):
+    use_score_threshold = request.form.get('use_score_threshold') == 'on'
+    score_threshold = float(request.form.get('score_threshold', 0.0))
+    score_direction = request.form.get('score_direction')
+    include_tags = request.form.get('include_tags') == 'on'
 
+    images_query = Image.query.filter(Image.artist.has(name=artist_name))
+
+    if use_score_threshold:
+        if score_direction == 'above':
+            images_query = images_query.filter(Image.score >= score_threshold)
+        elif score_direction == 'below':
+            images_query = images_query.filter(Image.score <= score_threshold)
+
+    images = images_query.all()
+
+    zip_file_path = create_zip_file_for_artist(images, artist_name, include_tags)
+    if zip_file_path:
+        directory = os.path.dirname(zip_file_path)
+        filename = os.path.basename(zip_file_path)
+        return send_from_directory(directory=directory, path=filename, as_attachment=True)
+    else:
+        return "Error in creating zip file", 500
+
+
+def create_zip_file_for_artist(images, artist_name, include_tags):
+    cache_dir = os.path.join(app.root_path, 'cache', artist_name)
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    zip_filename = f"{artist_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    zip_filepath = os.path.join(cache_dir, zip_filename)
+
+    with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+        for image in images:
+            image_path = os.path.join(FA_FOLDER, artist_name, image.file_name + image.file_type)
+            if os.path.exists(image_path):
+                # Write the image file to the zip at the root level
+                zipf.write(image_path, os.path.basename(image_path))
+                if include_tags:
+                    tag_file_path = create_or_get_tag_file(image, cache_dir)
+                    # Write the tag file to the zip at the root level
+                    zipf.write(tag_file_path, os.path.basename(tag_file_path))
+
+    return zip_filepath if os.path.exists(zip_filepath) else None
+
+
+def create_or_get_tag_file(image, cache_dir):
+    # Rejoin all parts except the last one to get the name without the extension
+    tag_file_name = image.file_name + '.txt'
+    print(tag_file_name)
+    tag_file_path = os.path.join(cache_dir, tag_file_name)
+    
+    # Create tag file if it doesn't exist
+    if not os.path.exists(tag_file_path):
+        with open(tag_file_path, 'w') as tag_file:
+            for tag in image.tags:
+                tag_file.write(tag.tag_name + '\n')
+    
+    return tag_file_path
+
+
+
+
+
+
+def create_zip_file(score_threshold, include_tags, include_all_images):
+    images = Image.query
+
+    if not include_all_images:
+        if score_threshold:
+            images = images.filter(Image.score >= score_threshold)
+        if include_tags:
+            images = images.filter(Image.tags.any(Tag.name.in_(include_tags)))
+
+    zip_filename = f"images_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    zip_filepath = os.path.join(FA_FOLDER, zip_filename)
+
+    with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+        for image in images:
+            image_path = os.path.join(FA_FOLDER, image.file_name + image.file_type)
+            if os.path.exists(image_path):
+                zipf.write(image_path, os.path.basename(image_path))
+
+    return zip_filepath if os.path.exists(zip_filepath) else None
 
 def run_aesthetic_scoring():
     print("Starting aesthetic scoring...")
@@ -254,6 +340,11 @@ with app.app_context():
     # Other setup or initialization code can go here
 
 if __name__ == '__main__':
+    cache_dir = os.path.join(app.root_path, 'cache')
+    #delete cache folder if it exists
+    if os.path.exists(cache_dir):
+        import shutil
+        shutil.rmtree(cache_dir)
     def signal_handler(sig, frame):
         print("Ctrl + C detected. Stopping...")
         downloader.stop_threads()  # Stop the threads gracefully
