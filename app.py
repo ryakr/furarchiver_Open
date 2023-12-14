@@ -44,7 +44,8 @@ def query_database_with_sorting(query, sort_by):
 
 task_info = {
     'aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
-    'tag_update': {'current': 0, 'total': 0, 'start_time': None, 'running': False}
+    'tag_update': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
+    'tagger': {'current': 0, 'total': 0, 'start_time': None, 'running': False}
 }
 
 def calculate_estimated_time(task_key):
@@ -159,6 +160,15 @@ def run_aesthetic_scoring():
     task_info['aesthetic_scoring']['current'] = total
     task_info['aesthetic_scoring']['running'] = False
 
+def run_tagger():
+    print("Starting aesthetic scoring...")
+    task_info['tagger']['start_time'] = datetime.now()  # Set the start time
+    for current, total in Maintnance.tag_images_without_tags(app, FA_FOLDER):
+        task_info['tagger']['current'] = current
+        task_info['tagger']['total'] = total
+    task_info['tagger']['current'] = total
+    task_info['tagger']['running'] = False
+
 def run_tag_update():
     task_info['tag_update']['start_time'] = datetime.now() 
     for current, total in Maintnance.find_images_and_update_tags(app, use_csv=True):
@@ -191,6 +201,22 @@ def aesthetic_scoring_progress():
     est_time = calculate_estimated_time('aesthetic_scoring')
     return jsonify({'current': current, 'total': total, 'est_time': est_time})
 
+@app.route('/start_tagger')
+def start_tagger():
+    print(task_info['tagger'])
+    if task_info['tagger']['running'] == False: 
+        task_info['tagger']['running'] = True
+        Thread(target=run_tagger).start()
+    return jsonify({'status': 'started'})
+
+@app.route('/tagger_progress')
+def tagger_progress():
+    print(task_info['tagger'])
+    progress = task_info['tagger']
+    current = progress.get('current', 0)
+    total = progress.get('total', 0)
+    est_time = calculate_estimated_time('tagger')
+    return jsonify({'current': current, 'total': total, 'est_time': est_time})
 
 @app.route('/start_tag_update')
 def start_tag_update():

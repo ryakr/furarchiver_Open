@@ -9,6 +9,7 @@ import sys
 import gzip
 import shutil
 import pandas as pd
+from Tagger import _8305_Tagger
 
 MAPPING = {
     "general": 0, "gen": 0,
@@ -175,3 +176,37 @@ def get_tags_for_md5(md5_values, imagedb):
             for tag in tag_list:
                 mapped_tags[tag] = category_id
     return mapped_tags
+
+def tag_images_without_tags(app, FA_FOLDER):
+    fold = sys.path[0]
+    tagger = _8305_Tagger()
+    tagger.load(f"{fold}\\models\\model_balanced.pth", f"{fold}\\models\\tags_8034.json")
+
+    with app.app_context():
+        images_without_tags = db.session.query(Image).\
+            outerjoin(ImageTags, Image.id == ImageTags.image_id).\
+            filter(ImageTags.tag_id.is_(None)).\
+            all()
+
+        total_images = len(images_without_tags)
+        for index, image in enumerate(images_without_tags):
+            artist_Name = Artist.query.filter_by(id=image.artist_id).first().name
+            image_path = os.path.join(FA_FOLDER, artist_Name, f"{image.file_name}{image.file_type}")
+            if os.path.exists(image_path):
+                try:
+                    generated_tags = tagger.predict_image(image_path)
+                    print(f"Generated tags for {image.file_name}: {generated_tags}")
+                    for tag_name in generated_tags:
+                        tag_name = tag_name.replace(" ", "_")
+                        tag = Tag.query.filter_by(tag_name=tag_name).first()
+                        if not tag:
+                            tag = Tag(tag_name=tag_name)
+                            db.session.add(tag)
+                        image.tags.append(tag)
+                        image.autotagged = True
+                    db.session.commit()
+                except Exception as e:
+                    print(f"Error processing image {image.file_name}: {e}")
+            yield (index + 1), total_images
+
+    tagger.close()
