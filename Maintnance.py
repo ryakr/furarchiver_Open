@@ -131,6 +131,9 @@ def find_images_and_update_tags(app, use_csv=False):
                 time.sleep(1)
                 tags = get_tags_for_md5(image.md5, image)
                 print(image.md5)
+                if use_csv and (tags is None or len(tags) == 0):
+                    print(f"MD5 {image.md5} was found but no tags, possibly deleted.")
+                    image.check_again = False
                 if len(tags) > 0:
                     print(f"Found {len(tags)} tags for {image.md5}")
                     image.check_again = False
@@ -163,6 +166,9 @@ def get_tags_for_md5(md5_values, imagedb):
     mapped_tags = {}
     imagedb.check_again = False
     tags = data['posts'][0]['tags']
+    print(tags)
+    if tags is None:
+        return None
     for category, tag_list in tags.items():
         category_id = MAPPING.get(category, None)
         if category_id is not None:

@@ -124,7 +124,7 @@ def tag_update_progress():
 @app.route('/artists')
 def artists_grid():
     page = request.args.get('page', 1, type=int)  # Default to first page
-    per_page = 50  # Number of artists per page
+    per_page = 28  # Number of artists per page
 
     # Paginate the artists
     paginated_artists = Artist.query.paginate(page=page, per_page=per_page, error_out=False)

@@ -68,7 +68,6 @@ class Downloader:
         self.app = app
         self.threads = []
         self.threads_active = False
-        self.END_OF_QUEUE = object()
         self.download_destination = FA_FOLDER
         self.condition = threading.Condition()  # Threading condition
         self.start_threads() 
@@ -171,8 +170,6 @@ class Downloader:
                     while self.download_queue.empty():  # Check if queue is empty
                         self.condition.wait()  # Wait for an item to be added
                     artist_key = self.download_queue.get()
-                    if artist_key is self.END_OF_QUEUE:
-                        break
 
                 # Process download outside of the locked section
                 self.download_artist_wrapped(artist_key, self.download_destination)
@@ -186,8 +183,6 @@ class Downloader:
         self.threads_active = True
 
     def stop_threads(self):
-        for _ in self.threads:
-            self.download_queue.put(self.END_OF_QUEUE)
 
         for thread in self.threads:
             thread.join()
