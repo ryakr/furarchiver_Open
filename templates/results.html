@@ -94,6 +94,14 @@
             <div class="alert alert-danger">{{ error }}</div>
 			<form action="/download" method="post" id="downloadForm">
 				<input type="hidden" name="artist_name" value="{{ artist_name }}">
+				<div class="form-check form-check-inline">
+					<input class="form-check-input" type="radio" name="sourceOption" id="defaultSource" value="default" checked>
+					<label class="form-check-label" for="defaultSource">Default Source</label>
+				</div>
+				<div class="form-check form-check-inline">
+					<input class="form-check-input" type="radio" name="sourceOption" id="e621Source" value="e621">
+					<label class="form-check-label" for="e621Source">E621 Source</label>
+				</div>
 				<button type="submit" class="btn btn-primary">Request Update / Initial Download</button>
 			</form>
         {% else %}
@@ -113,6 +121,14 @@
 			</div>
 			<form action="/download" method="post" id="downloadForm">
 				<input type="hidden" name="artist_name" value="{{ artist_name }}">
+				<div class="form-check form-check-inline">
+					<input class="form-check-input" type="radio" name="sourceOption" id="defaultSource" value="default" checked>
+					<label class="form-check-label" for="defaultSource">Default Source</label>
+				</div>
+				<div class="form-check form-check-inline">
+					<input class="form-check-input" type="radio" name="sourceOption" id="e621Source" value="e621">
+					<label class="form-check-label" for="e621Source">E621 Source</label>
+				</div>
 				<button type="submit" class="btn btn-primary">Request Update / Initial Download</button>
 			</form>
         {% endif %}

@@ -8,6 +8,8 @@ class Artist(db.Model):
     other_names = db.relationship('ArtistAlias', backref='artist', lazy=True)
     websites = db.relationship('Website', backref='artist', lazy=True)
     images = db.relationship('Image', backref='artist', lazy=True)
+    from_e621 = db.Column(db.Boolean, default=False)
+    from_furaffinity = db.Column(db.Boolean, default=False)
 
 class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

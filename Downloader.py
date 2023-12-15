@@ -12,7 +12,7 @@ import time
 import threading
 import queue
 from flask import current_app
-
+from E621_Downloader import E621Downloader
 
 # Constants
 BASE_URL = "http://example.onion/fa/"
@@ -52,7 +52,7 @@ def sanitize_filename(filename):
 
 # Downloader class
 class Downloader:
-    def __init__(self, base_url, socks_proxy_port, config_file, db_session, FA_FOLDER, app):
+    def __init__(self, base_url, socks_proxy_port, config_file, db_session, FA_FOLDER, app, source='default'):
         self.base_url = base_url
         self.socks_proxy_port = socks_proxy_port
         self.proxies = {
@@ -68,6 +68,7 @@ class Downloader:
         self.app = app
         self.threads = []
         self.threads_active = False
+        self.source = source
         self.download_destination = FA_FOLDER
         self.condition = threading.Condition()  # Threading condition
         self.start_threads() 
@@ -75,7 +76,7 @@ class Downloader:
     def add_artist_to_db(self, artist_name):
         artist = Artist.query.filter_by(name=artist_name).first()
         if artist is None:
-            artist = Artist(name=artist_name)
+            artist = Artist(name=artist_name, from_furaffinity=True)
             self.db_session.add(artist)
             try:
                 self.db_session.commit()
@@ -106,14 +107,14 @@ class Downloader:
             image.tags.append(tag)
         self.db_session.commit()
 
-    def add_to_queue(self, artist_name):
+    def add_to_queue(self, artist_name, source='default'):
         with self.condition: 
             if artist_name.strip().lower() in self.queue:
                 print(f"{artist_name} is already in the queue.")
                 return 
             print(f"Added {artist_name} to download queue")
             artist_key = artist_name.strip().lower()
-            self.download_queue.put(artist_key)  # Add to the thread-safe queue
+            self.download_queue.put((artist_key,source))  # Add to the thread-safe queue
             self.queue.append(artist_key)  # Keep in status tracking list
             self.download_status[artist_key] = {
                 "total_files": 0,
@@ -141,10 +142,10 @@ class Downloader:
             }
             status_report.append(report)
         return status_report
-    def download_artist_wrapped(self, artist_key, download_destination):
+    def download_artist_wrapped(self, artist_key, download_destination, source):
         # Push the application context
         with self.app.app_context():
-            self.download_artist(artist_key, download_destination)
+            self.download_artist(artist_key, download_destination, source)
 
     def process_queue(self):
         if not self.threads_active:
@@ -169,10 +170,10 @@ class Downloader:
                 with self.condition:  # Acquire the condition lock
                     while self.download_queue.empty():  # Check if queue is empty
                         self.condition.wait()  # Wait for an item to be added
-                    artist_key = self.download_queue.get()
+                    artist_key, source = self.download_queue.get()  # Retrieve both artist_key and source
 
                 # Process download outside of the locked section
-                self.download_artist_wrapped(artist_key, self.download_destination)
+                self.download_artist_wrapped(artist_key, self.download_destination, source)
                 self.download_queue.task_done()
                 self.queue.remove(artist_key)
 
@@ -181,6 +182,7 @@ class Downloader:
             thread.start()
             self.threads.append(thread)
         self.threads_active = True
+
 
     def stop_threads(self):
 
@@ -191,37 +193,44 @@ class Downloader:
         self.threads_active = False
 
 
-    def download_artist(self, artist_key, destination):
-        artist_url = urljoin(self.base_url, artist_key)
-        print(f"Downloading {artist_key} from {artist_url}")
-        self.download_status[artist_key]["status"] = "Contacting Back End"
-        response = requests.get(artist_url, proxies=self.proxies, timeout=120)
-        print(f"{artist_key}: {response.status_code}")
-        if response.status_code == 404:
-            print(f"Artist {artist_key} not found.")
-            return
-        elif response.status_code == 502:
-            print(f"Error 502: Bad Gateway, using .onion.ly")
-            artist_url = artist_url.replace(".onion/", ".onion.ly/")
-            response = requests.get(artist_url, timeout=120)
-        elif response.status_code != 200:
-            print(f"Error downloading {artist_key}: {response.status_code}")
-            return
-        self.download_status[artist_key]["status"] = "BackEnd Got"
-        artist = self.add_artist_to_db(artist_key)
-        soup = BeautifulSoup(response.content, 'html.parser')
+    def download_artist(self, artist_key, destination, source):
+        print(source)
+        if source.lower() == 'e621':
+            print(f"Downloading {artist_key} from e621")
+            DL_Path = os.path.join(destination, artist_key)
+            e621_dl = E621Downloader(output_folder=DL_Path, download_status=self.download_status)
+            e621_dl.download_from_id(start_id=0, tags=artist_key, limit=1000)
+        else:
+            artist_url = urljoin(self.base_url, artist_key)
+            print(f"Downloading {artist_key} from {artist_url}")
+            self.download_status[artist_key]["status"] = "Contacting Back End"
+            response = requests.get(artist_url, proxies=self.proxies, timeout=120)
+            print(f"{artist_key}: {response.status_code}")
+            if response.status_code == 404:
+                print(f"Artist {artist_key} not found.")
+                return
+            elif response.status_code == 502:
+                print(f"Error 502: Bad Gateway, using .onion.ly")
+                artist_url = artist_url.replace(".onion/", ".onion.ly/")
+                response = requests.get(artist_url, timeout=120)
+            elif response.status_code != 200:
+                print(f"Error downloading {artist_key}: {response.status_code}")
+                return
+            self.download_status[artist_key]["status"] = "BackEnd Got"
+            artist = self.add_artist_to_db(artist_key)
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-        artist_directory = os.path.join(destination, artist_key)
-        os.makedirs(artist_directory, exist_ok=True)
+            artist_directory = os.path.join(destination, artist_key)
+            os.makedirs(artist_directory, exist_ok=True)
 
-        file_links = self.extract_file_links(soup, artist_url)
-        total_files = len(file_links)
-        self.download_status[artist_key]["total_files"] = total_files
-        self.download_status[artist_key]["status"] = "downloading"
+            file_links = self.extract_file_links(soup, artist_url)
+            total_files = len(file_links)
+            self.download_status[artist_key]["total_files"] = total_files
+            self.download_status[artist_key]["status"] = "downloading"
 
-        for index, (file_url, date, size_str) in enumerate(file_links, start=1):
-            self.download_file(file_url, date, size_str, artist_directory, artist_key, artist)
-            self.download_status[artist_key]["downloaded_files"] = index
+            for index, (file_url, date, size_str) in enumerate(file_links, start=1):
+                self.download_file(file_url, date, size_str, artist_directory, artist_key, artist)
+                self.download_status[artist_key]["downloaded_files"] = index
 
 
     def extract_file_links(self, soup, artist_url):

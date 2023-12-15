@@ -2,6 +2,7 @@ import os
 from os.path import splitext
 from flask import Flask, render_template, request, jsonify, Response, url_for, send_from_directory
 from Downloader import Downloader
+
 from flask_sqlalchemy import SQLAlchemy
 from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, db
 import requests
@@ -27,7 +28,6 @@ db.init_app(app)
 FA_FOLDER = os.path.join(app.root_path, 'FA')
 # Create an instance of your Downloader
 downloader = Downloader(base_url, socks_proxy_port, config_file, db.session, FA_FOLDER, app)
-
 
 def query_database_with_sorting(query, sort_by):
     if sort_by == 'name':
@@ -181,7 +181,10 @@ def run_tag_update():
 def update_all_artists():
     artists = Artist.query.all()
     for artist in artists:
-        downloader.add_to_queue(artist.name)
+        if artist.from_e621:
+            downloader.add_to_queue(artist.name, "e621")
+        if artist.from_furaffinity:
+            downloader.add_to_queue(artist.name, "default")
     return jsonify({'status': 'All artists added to download queue'})
 
 @app.route('/start_aesthetic_scoring')
@@ -326,7 +329,9 @@ def fa_file(artist_name, filename):
 @app.route('/download', methods=['POST'])
 def download():
     artist_name = request.form.get('artist_name')
-    downloader.add_to_queue(artist_name)
+    source = request.form.get('sourceOption')
+    print(source)
+    downloader.add_to_queue(artist_name, source)
     downloader.process_queue()
     # TODO: Here you might want to trigger the actual download process
     # This could be done in a background thread or a separate process
