@@ -33,7 +33,7 @@ class E621Downloader:
         try:
             if os.path.exists(file_name):
                 print(f"File {file_name} already exists.")
-                return True
+                return False
             start_time = time.time()
             response = requests.get(image_url, headers=self.headers, stream=True, timeout=60)
             response.raise_for_status()
@@ -88,11 +88,12 @@ class E621Downloader:
                     file_path = os.path.join(self.output_folder, file_name)
 
                     if self.download_image(file_url, file_path, artist_key):
-                        downloaded_files += 1
-                        self.update_status(artist_key, "Downloading", downloaded_files=downloaded_files)
+                        self.save_post_to_db(post)
+                    downloaded_files += 1
+                    self.update_status(artist_key, "Downloading", downloaded_files=downloaded_files)
 
                     last_id = post['id'] + 1
-                    self.save_post_to_db(post)
+                    
 
             except (HTTPError, Timeout, ConnectionError) as http_err:
                 print(f"HTTP error occurred: {http_err}")
@@ -126,11 +127,12 @@ class E621Downloader:
             if not image:
                 image = Image(
                     file_name=post['file']['md5'],
-                    file_type=post['file']['ext'],
+                    file_type=f".{post['file']['ext']}",
                     artist_id=artist.id,
                     md5=post['file']['md5'],
                     checkagain=False,
-                    score=post['score']['total']
+                    score=post['score']['total'],
+                    scored=True
                 )
                 db.session.add(image)
 

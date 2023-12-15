@@ -6,6 +6,60 @@
     <title>Results - Archive Downloader</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
 	<style>
+	body {
+            padding-top: 20px;
+        }
+        .btn-primary, .btn-secondary {
+            border-radius: 20px; /* Rounded edges */
+            padding: 10px 20px; /* Larger padding for a bigger button */
+            font-size: 16px; /* Larger font size */
+            box-shadow: 0 3px 6px 0 rgba(0, 0, 0, 0.16); /* Adds a shadow for depth */
+            transition: background-color 0.3s, box-shadow 0.3s; /* Smooth transition for hover effects */
+        }
+        .btn-primary:hover, .btn-secondary:hover {
+            background-color: #0056b3; /* Darker shade for hover state */
+            box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.26); /* Larger shadow for hover state */
+        }
+        .pagination li a {
+            border-radius: 15px; /* Rounded edges for pagination */
+            transition: background-color 0.3s; /* Smooth transition for hover effects */
+        }
+        .pagination li.active a {
+            background-color: #007bff; /* Highlight the active page number */
+            color: white;
+        }
+        .pagination li a:hover {
+            background-color: #0056b3; /* Darker shade for hover state */
+        }
+		.form-container {
+            background-color: #f8f9fa; /* Light grey background */
+            border-top: 1px solid #e9ecef; /* Border top to separate form area */
+            padding: 20px; /* Padding around the form area */
+            margin-top: 40px; /* Space above the form area */
+        }
+        
+        .form-group {
+            display: flex; /* Flex container for alignment */
+            align-items: center; /* Align items vertically */
+            justify-content: space-between; /* Distribute space between items */
+            margin-bottom: 15px; /* Space between form groups */
+        }
+
+        .form-group label {
+            margin-right: 10px; /* Space between label and input or checkbox */
+        }
+
+        .form-inline > * {
+            margin: 5px 10px; /* Space around inline elements */
+        }
+
+        .download-btn-group {
+            text-align: right; /* Align buttons to the right */
+        }
+
+        .btn {
+            min-width: 150px; /* Minimum width for buttons */
+        }
     .main-content {
         margin-bottom: 60px; /* Adjust this based on the estimated height of your bottom bar */
     }
@@ -135,25 +189,35 @@
 		
 		<!-- Add this form within your results.html template -->
 
-		<form action="{{ url_for('download_artist_images', artist_name=artist_name) }}" method="post">
-			<input type="hidden" name="artist_name" value="{{ artist_name }}">
-
-			<input type="checkbox" name="use_score_threshold" id="use_score_threshold">
-			<label for="use_score_threshold">Use Score Threshold</label><br>
-
-			<label for="score_threshold">Score Threshold:</label>
-			<input type="number" name="score_threshold" id="score_threshold" step="any"><br>
-
-			<input type="radio" name="score_direction" value="above" checked>
-			<label for="above">Above Threshold</label><br>
-			<input type="radio" name="score_direction" value="below">
-			<label for="below">Below Threshold</label><br>
-
-			<input type="checkbox" name="include_tags" id="include_tags">
-			<label for="include_tags">Include Tags</label><br>
-
-			<input type="submit" value="Download Images">
-		</form>
+		<div class="form-container">
+			<form action="{{ url_for('download_artist_images', artist_name=artist_name) }}" method="post" class="download-form">
+				<div class="form-group">
+					<div>
+						<input type="checkbox" name="use_score_threshold" id="use_score_threshold">
+						<label for="use_score_threshold">Use Score Threshold</label>
+					</div>
+					<div>
+						<label for="score_threshold">Score Threshold:</label>
+						<input type="number" name="score_threshold" id="score_threshold" step="any" class="form-control">
+					</div>
+					<div class="form-inline">
+						<input type="radio" name="score_direction" id="above" value="above" checked>
+						<label for="above">Above</label>
+						<input type="radio" name="score_direction" id="below" value="below">
+						<label for="below">Below</label>
+					</div>
+					<div>
+						<input type="checkbox" name="include_tags" id="include_tags">
+						<label for="include_tags">Include Tags</label>
+					</div>
+				</div>
+				<div class="form-group download-btn-group">
+					<button type="submit" class="btn btn-primary">Download Images</button>
+					<a href="{{ url_for('search_page') }}" class="btn btn-secondary">New Search</a>
+					<a href="{{ url_for('home') }}" class="btn btn-secondary">Back to Home</a>
+				</div>
+			</form>
+		</div>
 
 		<a href="{{ url_for('search_page') }}" class="btn btn-secondary mt-3">New Search</a>
 		<a href="{{ url_for('home') }}" class="btn btn-secondary mt-3">Back to Home</a>
