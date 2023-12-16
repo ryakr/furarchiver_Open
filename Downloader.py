@@ -130,7 +130,9 @@ class Downloader:
 
     def get_queue(self):
         status_report = []
-        for artist_key in self.queue:
+        queue_length = len(self.queue)
+
+        for artist_key in self.queue[:4]:  # Process only the first 4 artists in the queue
             status = self.download_status.get(artist_key, {"status": "pending"})
             report = {
                 'artist_info': artist_key,
@@ -141,7 +143,21 @@ class Downloader:
                 'current_file_percent': status['current_file_percent']
             }
             status_report.append(report)
+
+        if queue_length > 4:
+            additional_artists = queue_length - 4
+            pending_report = {
+                'artist_info': 'Additional Artists',
+                'status': f'{additional_artists} others pending...',
+                'downloaded_files': 0,
+                'total_files': 0,
+                'speed': 0,
+                'current_file_percent': 0
+            }
+            status_report.append(pending_report)
+
         return status_report
+
     def download_artist_wrapped(self, artist_key, download_destination, source):
         # Push the application context
         with self.app.app_context():
