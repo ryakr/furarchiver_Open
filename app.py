@@ -317,8 +317,8 @@ def search_filter(search_input, sort_by="id", artist_name=None):
         files_query = files_query.join(tag_count_subquery, Image.id == tag_count_subquery.c.image_id)
 
     if artist_match:
-        artist_name = artist_match.group(1).strip()
-        artist_id = Artist.query.filter_by(name=artist_name).first()
+        artist_name_RE = artist_match.group(1).strip()
+        artist_id = Artist.query.filter_by(name=artist_name_RE).first()
         if artist_id:
             artist_id = artist_id.id
             files_query = files_query.filter(Image.artist_id == artist_id)
@@ -330,7 +330,7 @@ def search_filter(search_input, sort_by="id", artist_name=None):
         comparison = Image.score > score if operator == '>' else Image.score < score
         files_query = files_query.filter(comparison)
     if artist_name or not (tag_match or artist_match or score_match):
-        if not (tag_match or artist_match or score_match):
+        if not (tag_match or artist_match or score_match) and not artist_name:
             artist_name = search_input
         search_input += f" artist:{artist_name}"
         artist_id = Artist.query.filter_by(name=artist_name).first()
@@ -361,7 +361,6 @@ def search_results():
         if artist_name:
             artist_name = artist_name.lower().strip()
         sort_by = request.args.get('sort_by', 'id')
-
     files_query = search_filter(search_input, sort_by, artist_name)
 
     search_input += f" artist:{artist_name}" if artist_name else ""
