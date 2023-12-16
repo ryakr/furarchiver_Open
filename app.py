@@ -2,20 +2,19 @@ import os
 from os.path import splitext
 from flask import Flask, render_template, request, jsonify, Response, url_for, send_from_directory
 from Downloader import Downloader
-
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_, and_, func, distinct
 from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, db
-import requests
 import json
 import time
-from tqdm import tqdm
-import math
 import Maintnance
 from threading import Thread
 from datetime import datetime
 import signal
 import sys
 import zipfile
+import re
+import bleach
 
 app = Flask(__name__)
 base_url = "http://g6jy5jkx466lrqojcngbnksugrcfxsl562bzuikrka5rv7srgguqbjid.onion/fa/"
@@ -28,6 +27,11 @@ db.init_app(app)
 FA_FOLDER = os.path.join(app.root_path, 'FA')
 # Create an instance of your Downloader
 downloader = Downloader(base_url, socks_proxy_port, config_file, db.session, FA_FOLDER, app)
+
+def sanitize_input(user_input):
+    # Sanitize the input by stripping all HTML tags and attributes
+    clean_input = bleach.clean(user_input, tags=[], attributes={}, strip=True)
+    return clean_input
 
 def query_database_with_sorting(query, sort_by):
     if sort_by == 'name':
@@ -64,14 +68,14 @@ def calculate_estimated_time(task_key):
     
     return None
 
-@app.route('/results/download/<artist_name>', methods=['POST'])
-def download_artist_images(artist_name):
+@app.route('/results/download/<search_input>', methods=['POST'])
+def download_artist_images(search_input):
     use_score_threshold = request.form.get('use_score_threshold') == 'on'
     score_threshold = float(request.form.get('score_threshold', 0.0))
     score_direction = request.form.get('score_direction')
     include_tags = request.form.get('include_tags') == 'on'
-
-    images_query = Image.query.filter(Image.artist.has(name=artist_name))
+    print(search_input)
+    images_query = search_filter(search_input)
 
     if use_score_threshold:
         if score_direction == 'above':
@@ -81,7 +85,7 @@ def download_artist_images(artist_name):
 
     images = images_query.all()
 
-    zip_file_path = create_zip_file_for_artist(images, artist_name, include_tags)
+    zip_file_path = create_zip_file_for_artist(images, search_input, include_tags)
     if zip_file_path:
         directory = os.path.dirname(zip_file_path)
         filename = os.path.basename(zip_file_path)
@@ -90,16 +94,18 @@ def download_artist_images(artist_name):
         return "Error in creating zip file", 500
 
 
-def create_zip_file_for_artist(images, artist_name, include_tags):
-    cache_dir = os.path.join(app.root_path, 'cache', artist_name)
+def create_zip_file_for_artist(images, search_input, include_tags):
+    search_input = sanitize_input(search_input.replace(':', '_'))
+    cache_dir = os.path.join(app.root_path, 'cache', search_input)
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
-
-    zip_filename = f"{artist_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    zip_filename = f"{search_input}_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
     zip_filepath = os.path.join(cache_dir, zip_filename)
 
     with zipfile.ZipFile(zip_filepath, 'w') as zipf:
         for image in images:
+            artist_id = image.artist_id
+            artist_name = Artist.query.filter_by(id=artist_id).first().name
             image_path = os.path.join(FA_FOLDER, artist_name, image.file_name + image.file_type)
             if os.path.exists(image_path):
                 # Write the image file to the zip at the root level
@@ -291,35 +297,72 @@ def search_page():
     # For a GET request, just display the search form
     return render_template('search.html')
 
+def search_filter(search_input, sort_by="id", artist_name=None):
+    files_query = db.session.query(Image)
+    search_input = sanitize_input(search_input)
+    # Use regular expressions to find tags and artist
+    tag_match = re.search(r"tags:([a-zA-Z0-9, _]+)", search_input)
+    artist_match = re.search(r"artist:([a-zA-Z0-9 _]+)", search_input)
+    score_match = re.search(r"score([><][0-9.]+)", search_input)
+
+    if tag_match:
+        tags = tag_match.group(1).split(',')
+        formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
+        tag_count_subquery = db.session.query(ImageTags.image_id, func.count(ImageTags.tag_id).label('tag_count')) \
+                                       .join(Tag, ImageTags.tag_id == Tag.id) \
+                                       .filter(Tag.tag_name.in_(formatted_tags)) \
+                                       .group_by(ImageTags.image_id) \
+                                       .having(func.count(ImageTags.tag_id) == len(formatted_tags)) \
+                                       .subquery()
+        files_query = files_query.join(tag_count_subquery, Image.id == tag_count_subquery.c.image_id)
+
+    if artist_match:
+        artist_name = artist_match.group(1).strip()
+        artist_id = Artist.query.filter_by(name=artist_name).first().id
+        files_query = files_query.filter(Image.artist_id == artist_id)
+
+    if score_match:
+        operator, score = score_match.group(1)[0], float(score_match.group(1)[1:])
+        comparison = Image.score > score if operator == '>' else Image.score < score
+        files_query = files_query.filter(comparison)
+    if artist_name or not (tag_match or artist_match or score_match):
+        if not (tag_match or artist_match or score_match):
+            artist_name = search_input
+        search_input += f" artist:{artist_name}"
+        artist_id = Artist.query.filter_by(name=artist_name).first().id
+        files_query = files_query.filter(Image.artist_id == artist_id)
+
+    files_query = query_database_with_sorting(files_query, sort_by)
+    return files_query
+
 @app.route('/results', methods=['GET', 'POST'])
 def search_results():
     page = request.args.get('page', 1, type=int)  # Get the page number from query parameters
-    artist_name = request.args.get('artist_name', '').lower()  # Adjust to get artist_name from GET request
-    sort_by = request.args.get('sort_by', 'id')
+    search_input = ""
+    sort_by = "id"
+    artist_name = ""
     if request.method == 'POST':
-        sort_by = request.form.get('sort_by', 'id') 
-        artist_name = request.form.get('artist_name').lower()
+        search_input = request.form.get('search_input').lower().strip()
+        artist_name = request.form.get('artist_name')
+        if artist_name:
+            artist_name = artist_name.lower().strip()
+        sort_by = request.form.get('sort_by', 'id')
+    elif request.method == 'GET':
+        search_input = request.args.get('search_input', '').lower().strip()
+        artist_name = request.args.get('artist_name')
+        if artist_name:
+            artist_name = artist_name.lower().strip()
+        sort_by = request.args.get('sort_by', 'id')
 
-    
-    artist_path = os.path.join(FA_FOLDER, artist_name)
-    
-    if os.path.isdir(artist_path):
-        # Implement pagination
-        artist_id = Artist.query.filter_by(name=artist_name).first().id
-        files_query = db.session.query(Image).filter(Image.artist_id == artist_id)  # Adjust query as needed
-        files_query = query_database_with_sorting(files_query, sort_by)
-        paginated_files = files_query.paginate(page=page, max_per_page=50, error_out=False)
-        image_paths = []
-        for image in paginated_files.items:
-            image_paths.append(url_for('fa_file', artist_name=artist_name, filename=f"{image.file_name}{image.file_type}"))
-        files = image_paths
-        print(image_paths)
-        total_pages = paginated_files.pages
-        zipped_files = zip(files, paginated_files.items)
-        return render_template('results.html', artist_name=artist_name, sort_by=sort_by, files=files, total_pages=total_pages, current_page=page, zipped_files=zipped_files)
-    else:
-        total_pages = 1
-        return render_template('results.html', artist_name=artist_name, sort_by=sort_by, error='Artist not found', current_page=page, total_pages=total_pages)
+    files_query = search_filter(search_input, sort_by, artist_name)
+
+    paginated_files = files_query.paginate(page=page, max_per_page=50, error_out=False)
+    image_paths = [url_for('fa_file', artist_name=image.artist.name, filename=f"{image.file_name}{image.file_type}") for image in paginated_files.items]
+    total_pages = paginated_files.pages
+    total_results = paginated_files.total
+    zipped_files = zip(image_paths, paginated_files.items)
+
+    return render_template('results.html', total_results=total_results, search_input=search_input, sort_by=sort_by, files=image_paths, total_pages=total_pages, current_page=page, zipped_files=zipped_files)
 
 @app.route('/fa/<artist_name>/<filename>')
 def fa_file(artist_name, filename):
@@ -328,14 +371,17 @@ def fa_file(artist_name, filename):
 
 @app.route('/download', methods=['POST'])
 def download():
-    artist_name = request.form.get('artist_name')
-    source = request.form.get('sourceOption')
-    print(source)
-    downloader.add_to_queue(artist_name, source)
-    downloader.process_queue()
-    # TODO: Here you might want to trigger the actual download process
-    # This could be done in a background thread or a separate process
-    return jsonify({'success': f'Download requested for {artist_name}'})
+    search_input = request.form.get('search_input')
+    artist_match = re.search(r"artist:([a-zA-Z0-9 _]+)", search_input)
+    if artist_match:
+        artist_name = artist_match.group(1).strip()
+        source = request.form.get('sourceOption')
+        print(source)
+        downloader.add_to_queue(artist_name, source)
+        downloader.process_queue()
+        # TODO: Here you might want to trigger the actual download process
+        # This could be done in a background thread or a separate process
+        return jsonify({'success': f'Download requested for {artist_name}'})
 
 @app.route('/queue')
 def queue():

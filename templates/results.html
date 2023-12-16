@@ -94,40 +94,41 @@
 <body>
     {% include 'navbar.html' %}
     <div class="container mt-5 main-content">
-        <h1>Search Results</h1>
+        <h1>Search Results for: {{ search_input }}</h1>
+		<h1>Found {{ total_results }} images</h1>
 		<nav>
 			<ul class="pagination">
 				<!-- First Page Link -->
 				<li class="page-item {% if current_page == 1 %}disabled{% endif %}">
-					<a class="page-link" href="{{ url_for('search_results', page=1, artist_name=artist_name, sort_by=sort_by) }}">First</a>
+					<a class="page-link" href="{{ url_for('search_results', page=1, search_input=search_input, artist_name=artist_name, sort_by=sort_by) }}">First</a>
 				</li>
 
 				<!-- Previous Page Link -->
 				<li class="page-item {% if current_page == 1 %}disabled{% endif %}">
-					<a class="page-link" href="{{ url_for('search_results', page=current_page-1, artist_name=artist_name, sort_by=sort_by) }}">Previous</a>
+					<a class="page-link" href="{{ url_for('search_results', page=current_page-1, search_input=search_input, artist_name=artist_name, sort_by=sort_by) }}">Previous</a>
 				</li>
 
 				<!-- Page Numbers -->
 				{% for i in range(current_page - 5, current_page + 6) %}
 					{% if i > 0 and i <= total_pages %}
 						<li class="page-item {% if i == current_page %}active{% endif %}">
-							<a class="page-link" href="{{ url_for('search_results', page=i, artist_name=artist_name, sort_by=sort_by) }}">{{ i }}</a>
+							<a class="page-link" href="{{ url_for('search_results', page=i, search_input=search_input, artist_name=artist_name, sort_by=sort_by) }}">{{ i }}</a>
 						</li>
 					{% endif %}
 				{% endfor %}
 
 				<!-- Next Page Link -->
 				<li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
-					<a class="page-link" href="{{ url_for('search_results', page=current_page+1, artist_name=artist_name, sort_by=sort_by) }}">Next</a>
+					<a class="page-link" href="{{ url_for('search_results', page=current_page+1, search_input=search_input, artist_name=artist_name, sort_by=sort_by) }}">Next</a>
 				</li>
 
 				<!-- Last Page Link -->
 				<li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
-					<a class="page-link" href="{{ url_for('search_results', page=total_pages, artist_name=artist_name, sort_by=sort_by) }}">Last</a>
+					<a class="page-link" href="{{ url_for('search_results', page=total_pages, search_input=search_input, artist_name=artist_name, sort_by=sort_by) }}">Last</a>
 				</li>
 				<form action="{{ url_for('search_results') }}" method="get">
 					<input type="hidden" name="artist_name" value="{{ artist_name }}">
-
+					<input type="hidden" name="search_input" value="{{ search_input }}">
 					<!-- Dropdown for Sorting -->
 					<select name="sort_by" class="form-control" onchange="this.form.submit()">
 						<option value="id" {% if sort_by == 'id' %}selected{% endif %}>Sort by ID</option>
@@ -190,7 +191,7 @@
 		<!-- Add this form within your results.html template -->
 
 		<div class="form-container">
-			<form action="{{ url_for('download_artist_images', artist_name=artist_name) }}" method="post" class="download-form">
+			<form action="{{ url_for('download_artist_images', search_input=search_input) }}" method="post" class="download-form">
 				<div class="form-group">
 					<div>
 						<input type="checkbox" name="use_score_threshold" id="use_score_threshold">
@@ -198,7 +199,7 @@
 					</div>
 					<div>
 						<label for="score_threshold">Score Threshold:</label>
-						<input type="number" name="score_threshold" id="score_threshold" step="any" class="form-control">
+						<input type="number" name="score_threshold" id="score_threshold" step="any" class="form-control", value="0.0">
 					</div>
 					<div class="form-inline">
 						<input type="radio" name="score_direction" id="above" value="above" checked>
@@ -218,9 +219,6 @@
 				</div>
 			</form>
 		</div>
-
-		<a href="{{ url_for('search_page') }}" class="btn btn-secondary mt-3">New Search</a>
-		<a href="{{ url_for('home') }}" class="btn btn-secondary mt-3">Back to Home</a>
     </div>
 {% include '_bottom_bar.html' %}
 <script>
