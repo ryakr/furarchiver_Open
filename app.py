@@ -318,8 +318,12 @@ def search_filter(search_input, sort_by="id", artist_name=None):
 
     if artist_match:
         artist_name = artist_match.group(1).strip()
-        artist_id = Artist.query.filter_by(name=artist_name).first().id
-        files_query = files_query.filter(Image.artist_id == artist_id)
+        artist_id = Artist.query.filter_by(name=artist_name).first()
+        if artist_id:
+            artist_id = artist_id.id
+            files_query = files_query.filter(Image.artist_id == artist_id)
+        else:
+            return files_query.filter(Image.id == -1)
 
     if score_match:
         operator, score = score_match.group(1)[0], float(score_match.group(1)[1:])
@@ -329,8 +333,12 @@ def search_filter(search_input, sort_by="id", artist_name=None):
         if not (tag_match or artist_match or score_match):
             artist_name = search_input
         search_input += f" artist:{artist_name}"
-        artist_id = Artist.query.filter_by(name=artist_name).first().id
-        files_query = files_query.filter(Image.artist_id == artist_id)
+        artist_id = Artist.query.filter_by(name=artist_name).first()
+        if artist_id:
+            artist_id = artist_id.id
+            files_query = files_query.filter(Image.artist_id == artist_id)
+        else:
+            return files_query.filter(Image.id == -1)
 
     files_query = query_database_with_sorting(files_query, sort_by)
     return files_query
@@ -356,12 +364,16 @@ def search_results():
 
     files_query = search_filter(search_input, sort_by, artist_name)
 
+    search_input += f" artist:{artist_name}" if artist_name else ""
+
     paginated_files = files_query.paginate(page=page, max_per_page=50, error_out=False)
     image_paths = [url_for('fa_file', artist_name=image.artist.name, filename=f"{image.file_name}{image.file_type}") for image in paginated_files.items]
     total_pages = paginated_files.pages
     total_results = paginated_files.total
     zipped_files = zip(image_paths, paginated_files.items)
 
+    if len(image_paths) == 0:
+        return render_template('results.html', error='No results found', sort_by=sort_by, search_input=search_input, files=image_paths, total_pages=total_pages, current_page=page, total_results=total_results, zipped_files=zipped_files)
     return render_template('results.html', total_results=total_results, search_input=search_input, sort_by=sort_by, files=image_paths, total_pages=total_pages, current_page=page, zipped_files=zipped_files)
 
 @app.route('/fa/<artist_name>/<filename>')
@@ -372,6 +384,7 @@ def fa_file(artist_name, filename):
 @app.route('/download', methods=['POST'])
 def download():
     search_input = request.form.get('search_input')
+    print(search_input)
     artist_match = re.search(r"artist:([a-zA-Z0-9 _]+)", search_input)
     if artist_match:
         artist_name = artist_match.group(1).strip()
