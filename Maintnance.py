@@ -22,6 +22,10 @@ MAPPING = {
     "lore": 8, "lor": 8,
 }
 
+from datetime import datetime, timedelta
+today = datetime.now()
+yesterday = today - timedelta(days=1)
+
 def download_and_extract_csv(url, output_path):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     # Download the file
@@ -99,7 +103,7 @@ def is_md5_in_file(md5, md5_file_path):
 
 def prepFIAUT(csv_path, md5_file_path):
     if not os.path.exists(md5_file_path):
-        download_and_extract_csv("https://e621.net/db_export/posts-2023-12-12.csv.gz", csv_path)
+        download_and_extract_csv(f"https://e621.net/db_export/posts-{yesterday.year}-{yesterday.month}-{yesterday.day}.csv.gz", csv_path)
         extract_md5_to_file(csv_path, md5_file_path)
     if os.path.exists(csv_path):
         delete_file(csv_path)
@@ -108,7 +112,7 @@ def prepFIAUT(csv_path, md5_file_path):
 
 
 def find_images_and_update_tags(app, use_csv=False):
-    csv_path = os.path.join(app.root_path, 'CSV', 'posts-2023-12-12.csv')
+    csv_path = os.path.join(app.root_path, 'CSV', f'posts-{yesterday.year}-{yesterday.month}-{yesterday.day}.csv.csv')
     md5_path = os.path.join(app.root_path, 'CSV', 'md5s.csv')
     prepFIAUT(csv_path, md5_path)
     with app.app_context():

@@ -111,14 +111,14 @@ def create_zip_file_for_artist(images, search_input, include_tags):
                 # Write the image file to the zip at the root level
                 zipf.write(image_path, os.path.basename(image_path))
                 if include_tags:
-                    tag_file_path = create_or_get_tag_file(image, cache_dir)
+                    tag_file_path = create_or_get_tag_file(image, cache_dir, artist_name)
                     # Write the tag file to the zip at the root level
                     zipf.write(tag_file_path, os.path.basename(tag_file_path))
 
     return zip_filepath if os.path.exists(zip_filepath) else None
 
 
-def create_or_get_tag_file(image, cache_dir):
+def create_or_get_tag_file(image, cache_dir, artist_name):
     # Rejoin all parts except the last one to get the name without the extension
     tag_file_name = image.file_name + '.txt'
     print(tag_file_name)
@@ -127,8 +127,10 @@ def create_or_get_tag_file(image, cache_dir):
     # Create tag file if it doesn't exist
     if not os.path.exists(tag_file_path):
         with open(tag_file_path, 'w') as tag_file:
+            if artist_name not in image.tags:
+                tag_file.write(artist_name + ', ')
             for tag in image.tags:
-                tag_file.write(tag.tag_name + '\n')
+                tag_file.write(tag.tag_name + ', ')
     
     return tag_file_path
 
