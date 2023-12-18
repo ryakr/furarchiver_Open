@@ -20,6 +20,8 @@ class Image(db.Model):
     tags = db.relationship('Tag', secondary='image_tags', back_populates='images')
     score = db.Column(db.Float, default=0.0)
     scored = db.Column(db.Boolean, default=False)
+    AE_Score = db.Column(db.Float, default=0.0)
+    AE_Scored = db.Column(db.Boolean, default=False)
     checked_count = db.Column(db.Integer, default=0)
     check_again = db.Column(db.Boolean, default=True)
     autotagged = db.Column(db.Boolean, default=False)

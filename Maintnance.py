@@ -10,6 +10,7 @@ import gzip
 import shutil
 import pandas as pd
 from Tagger import _8305_Tagger
+import Scorer.Orig_Scorer
 
 MAPPING = {
     "general": 0, "gen": 0,
@@ -79,6 +80,33 @@ def GetAestheticScore(FA_FOLDER, app):
             yield (index + 1), total_images
         db.session.commit()
         pred.close()
+        del pred
+
+def GetOriginalScore(FA_FOLDER, app):
+    with app.app_context():
+        fold = sys.path[0]
+        pred = Scorer.Orig_Scorer.AestheticScorePredictor(f"{fold}\models\sac+logos+ava1-l14-linearMSE.pth")
+        images_to_score = db.session.query(Image).filter(Image.AE_Scored == False).all()
+        total_images = len(images_to_score)
+        pred.load_model()
+        for index, image in enumerate(images_to_score):
+            try:
+                file_name = f"{image.file_name}{image.file_type}"
+                image_path = os.path.join(FA_FOLDER, image.artist.name, file_name)
+                if not os.path.isfile(image_path):
+                    print(f"File not found: {image_path}")
+                    continue
+                score = pred.predict(image_path)
+                if score is None:
+                    print(f"Error processing {image_path}")
+                    continue
+                image.AE_Score = score
+                image.AE_Scored = True
+            except Exception as e:
+                print(e)
+            yield (index + 1), total_images
+        db.session.commit()
+        pred.unload_model()
         del pred
 
 def extract_md5_to_file(csv_path, md5_file_path):

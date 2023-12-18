@@ -43,13 +43,21 @@ def query_database_with_sorting(query, sort_by):
             return query.order_by(Image.score)
         else:  # sort_by == 'score_desc'
             return query.order_by(Image.score.desc())
+    elif sort_by in ['original_score', 'original_score_desc']:
+        # Filter out records where score is 0.0 or null
+        query = query.filter(Image.AE_Score != 0.0, Image.AE_Score.isnot(None))
+        if sort_by == 'original_score':
+            return query.order_by(Image.AE_Score)
+        else:  # sort_by == 'original_score_desc'
+            return query.order_by(Image.AE_Score.desc())
     else:  # Default sorting
         return query.order_by(Image.id)
 
 task_info = {
     'aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
     'tag_update': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
-    'tagger': {'current': 0, 'total': 0, 'start_time': None, 'running': False}
+    'tagger': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
+    'original_aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
 }
 
 def calculate_estimated_time(task_key):
@@ -159,6 +167,15 @@ def create_zip_file(score_threshold, include_tags, include_all_images):
 
     return zip_filepath if os.path.exists(zip_filepath) else None
 
+def run_original_aesthetic_scoring():
+    print("Starting aesthetic scoring...")
+    task_info['original_aesthetic_scoring']['start_time'] = datetime.now()  # Set the start time
+    for current, total in Maintnance.GetOriginalScore(FA_FOLDER, app):
+        task_info['original_aesthetic_scoring']['current'] = current
+        task_info['original_aesthetic_scoring']['total'] = total
+    task_info['original_aesthetic_scoring']['current'] = total
+    task_info['original_aesthetic_scoring']['running'] = False
+
 def run_aesthetic_scoring():
     print("Starting aesthetic scoring...")
     task_info['aesthetic_scoring']['start_time'] = datetime.now()  # Set the start time
@@ -184,6 +201,23 @@ def run_tag_update():
         task_info['tag_update']['total'] = total
     task_info['tag_update']['current'] = total
     task_info['tag_update']['running'] = False
+
+@app.route('/start_original_scoring')
+def start_original_aesthetic_scoring():
+    print(task_info['original_aesthetic_scoring'])
+    if task_info['original_aesthetic_scoring']['running'] == False: 
+        task_info['original_aesthetic_scoring']['running'] = True
+        Thread(target=run_original_aesthetic_scoring).start()
+    return jsonify({'status': 'started'})
+
+@app.route('/original_scoring_progress')
+def original_aesthetic_scoring_progress():
+    print(task_info['original_aesthetic_scoring'])
+    progress = task_info['original_aesthetic_scoring']
+    current = progress.get('current', 0)
+    total = progress.get('total', 0)
+    est_time = calculate_estimated_time('original_aesthetic_scoring')
+    return jsonify({'current': current, 'total': total, 'est_time': est_time})
 
 @app.route('/update_all_artists')
 def update_all_artists():
@@ -304,7 +338,7 @@ def search_filter(search_input, sort_by="id", artist_name=None):
     search_input = sanitize_input(search_input)
     # Use regular expressions to find tags and artist
     tag_match = re.search(r"tags:([a-zA-Z0-9, _]+)", search_input)
-    artist_match = re.search(r"artist:([a-zA-Z0-9 _]+)", search_input)
+    artist_match = re.search(r"artist:([a-zA-Z0-9 -_]+)", search_input)
     score_match = re.search(r"score([><][0-9.]+)", search_input)
 
     if tag_match:

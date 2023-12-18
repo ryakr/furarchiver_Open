@@ -13,9 +13,15 @@
     {% include 'navbar.html' %}
     <h1>Maintenance Page</h1>
     <div class="progress-container">
-        <button id="startAestheticScoring">Start Aesthetic Scoring</button>
+        <button id="startAestheticScoring">Start E621 Scoring</button>
         <progress id="progressBarAesthetic" value="0" max="100"></progress>
         <span id="progressBarAestheticInfo"></span>
+    </div>
+
+    <div class="progress-container">
+        <button id="startOriginalScoring">Start Original Scoring</button>
+        <progress id="progressBarOriginal" value="0" max="100"></progress>
+        <span id="progressBarOriginalInfo"></span>
     </div>
 
     <div class="progress-container">
@@ -67,6 +73,10 @@
                 }
             });
         }
+
+        document.getElementById('startOriginalScoring').addEventListener('click', function() {
+            startTask('/start_original_scoring', '/original_scoring_progress', 'progressBarOriginal');
+        });
 
         document.getElementById('startAestheticScoring').addEventListener('click', function() {
             startTask('/start_aesthetic_scoring', '/aesthetic_scoring_progress', 'progressBarAesthetic');
