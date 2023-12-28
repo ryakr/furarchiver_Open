@@ -1,9 +1,10 @@
 import torch
+import torch.nn as nn
 import clip
 from PIL import Image
 import numpy as np
 import pytorch_lightning as pl
-import torch.nn as nn
+
 
 
 class AestheticScorePredictor:

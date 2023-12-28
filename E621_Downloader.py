@@ -130,7 +130,7 @@ class E621Downloader:
                     file_type=f".{post['file']['ext']}",
                     artist_id=artist.id,
                     md5=post['file']['md5'],
-                    checkagain=False,
+                    check_again=False,
                     score=post['score']['total'],
                     scored=True
                 )

@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+    {% include 'navbar.html' %}
+  <head>
+    <title>Upload New Image</title>
+  </head>
+  <body>
+    <h1>Upload New Image to Artist</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    <form method=post enctype=multipart/form-data>
+      <label for="artist_name">Artist Name:</label>
+      <input type="text" name="artist_name" id="artist_name" required>
+      <input type="file" name="file[]" multiple>
+      <input type=submit value=Upload>
+    </form>
+  </body>
+  {% include '_bottom_bar.html' %}
+</html>

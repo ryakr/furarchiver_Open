@@ -263,6 +263,8 @@ class Downloader:
     def download_file(self, file_url, date, size_str, artist_directory, artist_key, artistdb):
         parsed_url = urlparse(file_url)
         sanitized_filename = sanitize_filename(os.path.basename(parsed_url.path))
+        if sanitized_filename == "":
+            return
         name, extenstion = os.path.splitext(sanitized_filename)
         if extenstion.lower() in ['.png', '.jpg', '.jpeg', '.gif']:
             image = self.add_image_to_db(name, extenstion, artistdb)
@@ -316,6 +318,14 @@ class Downloader:
                     break
                 else:
                     attempts += 1
+            except ConnectionError as e:
+                if 'SOCKSHTTPConnectionPool' in str(e):
+                    print("Caught a SOCKSHTTPConnectionPool error, sleeping for 2 seconds")
+                    time.sleep(2)
+                    print("Retrying download")
+                    attempts += 1
+                else:
+                    print("Caught a different ConnectionError")
             except Exception as e:
                 print(f"Error downloading {sanitized_filename}: {e}")
                 attempts += 1

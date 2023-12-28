@@ -1,6 +1,6 @@
 import os
 from os.path import splitext
-from flask import Flask, render_template, request, jsonify, Response, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, Response, url_for, send_from_directory, flash, redirect
 from Downloader import Downloader
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, and_, func, distinct
@@ -15,6 +15,9 @@ import sys
 import zipfile
 import re
 import bleach
+from werkzeug.utils import secure_filename
+import hashlib
+from tqdm import tqdm
 
 app = Flask(__name__)
 base_url = "http://g6jy5jkx466lrqojcngbnksugrcfxsl562bzuikrka5rv7srgguqbjid.onion/fa/"
@@ -23,6 +26,10 @@ config_file = os.path.join(app.root_path, "config.json")  # This should be the p
 QueueActive = False
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///FurArchiver.db'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_default_secret_key')
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024 # 10 GB max upload size
+print(app.secret_key)
+
 db.init_app(app)
 FA_FOLDER = os.path.join(app.root_path, 'FA')
 # Create an instance of your Downloader
@@ -58,6 +65,7 @@ task_info = {
     'tag_update': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
     'tagger': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
     'original_aesthetic_scoring': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
+    'sql_database_cleanup': {'current': 0, 'total': 0, 'start_time': None, 'running': False},
 }
 
 def calculate_estimated_time(task_key):
@@ -134,7 +142,7 @@ def create_or_get_tag_file(image, cache_dir, artist_name):
     
     # Create tag file if it doesn't exist
     if not os.path.exists(tag_file_path):
-        with open(tag_file_path, 'w') as tag_file:
+        with open(tag_file_path, 'w', encoding='utf-8') as tag_file:
             if artist_name not in image.tags:
                 tag_file.write(artist_name + ', ')
             for tag in image.tags:
@@ -143,7 +151,58 @@ def create_or_get_tag_file(image, cache_dir, artist_name):
     return tag_file_path
 
 
+# Add a function to check allowed file extensions
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        artist_name = request.form['artist_name']
+
+        # Check if the artist exists, else create a new artist
+        artist = Artist.query.filter_by(name=artist_name).first()
+        if not artist:
+            artist = Artist(name=artist_name)
+            db.session.add(artist)
+            db.session.commit()
+
+        # Check if the post request has the file part
+        if 'file[]' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+
+        files = request.files.getlist('file[]')
+
+        for file in tqdm(files):
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_ext = os.path.splitext(filename)[1]
+                file_path = os.path.join(FA_FOLDER, artist_name, filename)
+                fileName_without_ext = os.path.splitext(filename)[0]
+
+                # Save the file to the server
+                if not os.path.exists(os.path.dirname(file_path)):
+                    os.makedirs(os.path.dirname(file_path))
+                file.save(file_path)
+
+                # Calculate MD5 hash
+                md5_hash = hashlib.md5()
+                with open(file_path, 'rb') as f:
+                    for chunk in iter(lambda: f.read(4096), b""):
+                        md5_hash.update(chunk)
+                md5 = md5_hash.hexdigest()
+
+                # Create a new Image record and associate it with the artist
+                new_image = Image(file_name=fileName_without_ext, file_type=file_ext, artist=artist, md5=md5)
+                db.session.add(new_image)
+
+        db.session.commit()  # Commit all new records to the database
+        flash(f'{len(files)} files successfully uploaded')
+        return redirect(url_for('upload_file'))
+
+    return render_template('upload.html')
 
 
 
@@ -166,6 +225,15 @@ def create_zip_file(score_threshold, include_tags, include_all_images):
                 zipf.write(image_path, os.path.basename(image_path))
 
     return zip_filepath if os.path.exists(zip_filepath) else None
+
+def run_sql_database_cleanup():
+    print("Starting SQL database cleanup...")
+    task_info['sql_database_cleanup']['start_time'] = datetime.now()  # Set the start time
+    for current, total in Maintnance.sql_database_cleanup(app, FA_FOLDER):
+        task_info['sql_database_cleanup']['current'] = current
+        task_info['sql_database_cleanup']['total'] = total
+    task_info['sql_database_cleanup']['current'] = total
+    task_info['sql_database_cleanup']['running'] = False
 
 def run_original_aesthetic_scoring():
     print("Starting aesthetic scoring...")
@@ -201,6 +269,23 @@ def run_tag_update():
         task_info['tag_update']['total'] = total
     task_info['tag_update']['current'] = total
     task_info['tag_update']['running'] = False
+
+@app.route('/start_sql_database_cleanup')
+def start_sql_database_cleanup():
+    print(task_info['sql_database_cleanup'])
+    if task_info['sql_database_cleanup']['running'] == False: 
+        task_info['sql_database_cleanup']['running'] = True
+        Thread(target=run_sql_database_cleanup).start()
+    return jsonify({'status': 'started'})
+
+@app.route('/sql_database_cleanup_progress')
+def sql_database_cleanup_progress():
+    print(task_info['sql_database_cleanup'])
+    progress = task_info['sql_database_cleanup']
+    current = progress.get('current', 0)
+    total = progress.get('total', 0)
+    est_time = calculate_estimated_time('sql_database_cleanup')
+    return jsonify({'current': current, 'total': total, 'est_time': est_time})
 
 @app.route('/start_original_scoring')
 def start_original_aesthetic_scoring():

@@ -1,7 +1,7 @@
 import torch
 from PIL import Image
 from transformers import AutoProcessor, CLIPModel, logging
-from Scorer.MLP import MLP
+
 import json
 import os
 
@@ -22,6 +22,7 @@ class AestheticPredictor:
         self.mlp_model = self._load_mlp_model()
 
     def _load_mlp_model(self):
+        from Scorer.MLP import MLP
         dim = self.clip_model.projection_dim
         print("Loading MLP model...")
         model = MLP(dim)

@@ -14,6 +14,12 @@ class _8305_Tagger:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
         self.tags = None
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.autograd.set_detect_anomaly(False)
+        torch.autograd.profiler.emit_nvtx(enabled=False)
+        torch.autograd.profiler.profile(enabled=False)
+        torch.backends.cudnn.benchmark = True
 
     def load(self, model_path, tags_path):
         self.model = torch.load(model_path)
@@ -26,20 +32,21 @@ class _8305_Tagger:
             self.tags = sorted(self.tags)
 
     def predict_image(self, image_path):
-        img = Image.open(image_path).convert('RGB')
-        aspect_ratio = img.width / img.height
-        new_height = math.sqrt(512 ** 2 / aspect_ratio)
-        new_width = aspect_ratio * new_height
-        img.thumbnail((int(new_width), int(new_height)), Image.LANCZOS)
-        tensor = self.transform(img).unsqueeze(0).to(self.device)
-
         with torch.no_grad():
-            out = self.model(tensor)
-        probabilities = torch.nn.functional.sigmoid(out[0])
+            img = Image.open(image_path).convert('RGB')
+            aspect_ratio = img.width / img.height
+            new_height = math.sqrt(512 ** 2 / aspect_ratio)
+            new_width = aspect_ratio * new_height
+            img.thumbnail((int(new_width), int(new_height)), Image.LANCZOS)
+            tensor = self.transform(img).unsqueeze(0).to(self.device)
 
-        indices = torch.where(probabilities > 0.3)[0]
-        output_tags = [self.tags[idx] for idx in indices if self.tags[idx] != "placeholder0"]
-        return output_tags
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                out = self.model(tensor)
+                probabilities = torch.nn.functional.sigmoid(out[0]).to('cpu')
+
+            indices = torch.where(probabilities > 0.3)[0]
+            output_tags = [self.tags[idx] for idx in indices if self.tags[idx] != "placeholder0"]
+            return output_tags
 
     def close(self):
         if self.model:

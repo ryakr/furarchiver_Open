@@ -36,6 +36,11 @@
         <span id="progressBarTaggerInfo"></span>
     </div>
     <div class="progress-container">
+        <button id="startsqldbbcleanup">Start SQL DB Cleanup</button>
+        <progress id="progressBarsqldbbcleanup" value="0" max="100"></progress>
+        <span id="progressBarsqldbbcleanupInfo"></span>
+    </div>
+    <div class="progress-container">
         <button id="updateAllArtists">Update All Artists</button>
     </div>
     <script>
@@ -87,6 +92,9 @@
         });
         document.getElementById('startTaggerUpdate').addEventListener('click', function() {
             startTask('/start_tagger', '/tagger_progress', 'progressBarTagger');
+        });
+        document.getElementById('startsqldbbcleanup').addEventListener('click', function() {
+            startTask('/start_sql_database_cleanup', '/sql_database_cleanup_progress', 'progressBarsqldbbcleanup');
         });
     </script>
     {% include '_bottom_bar.html' %}

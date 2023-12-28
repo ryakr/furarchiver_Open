@@ -2,7 +2,7 @@ from modelsntebles import Artist, Image, Tag, ImageTags, ArtistAlias, Website, d
 import time
 import requests
 import json
-from Scorer.AE_Predictor import AestheticPredictor
+import hashlib
 import os
 from tqdm import tqdm
 import sys
@@ -10,7 +10,7 @@ import gzip
 import shutil
 import pandas as pd
 from Tagger import _8305_Tagger
-import Scorer.Orig_Scorer
+
 
 MAPPING = {
     "general": 0, "gen": 0,
@@ -57,6 +57,7 @@ def maintenance_tasks(ROOT_PATH, FA_FOLDER):
 
 def GetAestheticScore(FA_FOLDER, app):
     with app.app_context():
+        from Scorer.AE_Predictor import AestheticPredictor
         fold = sys.path[0]
         print(f"{fold}\models\e621-l14-rhoLoss.ckpt")
         pred = AestheticPredictor(f"{fold}\models\e621-l14-rhoLoss.ckpt", "openai/clip-vit-large-patch14", 'default', False)
@@ -84,6 +85,7 @@ def GetAestheticScore(FA_FOLDER, app):
 
 def GetOriginalScore(FA_FOLDER, app):
     with app.app_context():
+        import Scorer.Orig_Scorer
         fold = sys.path[0]
         pred = Scorer.Orig_Scorer.AestheticScorePredictor(f"{fold}\models\sac+logos+ava1-l14-linearMSE.pth")
         images_to_score = db.session.query(Image).filter(Image.AE_Scored == False).all()
@@ -242,3 +244,29 @@ def tag_images_without_tags(app, FA_FOLDER):
             yield (index + 1), total_images
 
     tagger.close()
+
+def sql_database_cleanup(app, FA_FOLDER):
+    with app.app_context():
+        images = db.session.query(Image).all()
+        total_images = len(images)
+        #artist array: ["Name": "ID"]
+        artist_dict = {}
+        artists = db.session.query(Artist).all()
+        for artist in artists:
+            artist_dict[artist.id] = artist.name
+        print(artist_dict)
+        for index, image in enumerate(images):
+            artist = artist_dict.get(image.artist_id)
+            image_path = os.path.join(FA_FOLDER, artist, f"{image.file_name}{image.file_type}")
+            if not os.path.exists(image_path):
+                print(f"Image {image.file_name}{image.file_type} not found, deleting from database...")
+                db.session.delete(image)
+                yield (index + 1), total_images  
+                continue
+            if image.md5 is None:
+                print(f"Image {image.file_name}{image.file_type} has no MD5 but exists on disk, making md5...")
+                with open(image_path, 'rb') as file:
+                    image.md5 = hashlib.md5(file.read()).hexdigest()
+                yield (index + 1), total_images  
+                continue
+        db.session.commit()          
