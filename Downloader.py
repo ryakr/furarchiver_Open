@@ -109,6 +109,8 @@ class Downloader:
 
     def add_to_queue(self, artist_name, source='default'):
         with self.condition: 
+            if source.lower() == 'default':
+                artist_name = artist_name.replace("_", "")
             if artist_name.strip().lower() in self.queue:
                 print(f"{artist_name} is already in the queue.")
                 return 
@@ -266,18 +268,45 @@ class Downloader:
         if sanitized_filename == "":
             return
         name, extenstion = os.path.splitext(sanitized_filename)
-        if extenstion.lower() in ['.png', '.jpg', '.jpeg', '.gif']:
-            image = self.add_image_to_db(name, extenstion, artistdb)
-            artistdb.images.append(image)
-            self.db_session.commit()
+        
         file_path = os.path.join(artist_directory, sanitized_filename)
         file_size_from_website = size_str_to_bytes(size_str)
         if file_size_from_website == 0:
+            remoteid = name.split('.')[0]
+            #https://d.furaffinity.net/art/{artist_key}/{remoteid}/{name}{extenstion}
+            response2 = requests.get(f"https://d.furaffinity.net/art/{artist_key}/{remoteid}/{name}{extenstion}")
+            if response2.status_code == 200:
+                start_time = datetime.datetime.now()
+                strings = "failure"
+                file_size_from_website = int(response2.headers.get('content-length', 0))
+                if os.path.exists(file_path):
+                    existing_file_size = os.path.getsize(file_path)
+                    if is_size_within_range(existing_file_size, file_size_from_website):
+                        return
+                with open(file_path, 'wb') as file:
+                    for data in response2.iter_content(1024):
+                        file.write(data)
+                        elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
+                        downloaded_size = os.path.getsize(file_path)
+                        speed = (downloaded_size / 1024) / elapsed_time if elapsed_time > 0 else 0
+                        self.download_status[artist_key]["speed"] = f"{speed:.2f} KB/s"
+                        self.download_status[artist_key]["current_file_percent"] = int((downloaded_size / file_size_from_website) * 100)
+                if os.path.getsize(file_path) == file_size_from_website:
+                    if extenstion.lower() in ['.png', '.jpg', '.jpeg', '.gif']:
+                        image = self.add_image_to_db(name, extenstion, artistdb)
+                        artistdb.images.append(image)
+                        self.db_session.commit()
+                        strings = "success"
+                print(f"Grabbed From d.furaffinity.net {sanitized_filename} | {strings}")
+                return
             print(f"Skipping {sanitized_filename} with size 0")
             return
         max_attempts = 3
         attempts = 0
-
+        if extenstion.lower() in ['.png', '.jpg', '.jpeg', '.gif']:
+            image = self.add_image_to_db(name, extenstion, artistdb)
+            artistdb.images.append(image)
+            self.db_session.commit()
         while attempts < max_attempts:
             try:
                 headers = {}
@@ -295,6 +324,11 @@ class Downloader:
                     existing_file_size = 0
                     headers.pop('Range', None)
                     response = requests.get(file_url, headers=headers, proxies=self.proxies, stream=True)
+                
+                if response.status_code != 200 and response.status_code != 206:
+                    print(f"Error downloading {sanitized_filename}: {response.status_code}")
+                    attempts += 1
+                    continue
 
                 total_size = int(response.headers.get('content-length', 0)) + existing_file_size
                 start_time = datetime.datetime.now()

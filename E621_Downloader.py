@@ -82,7 +82,14 @@ class E621Downloader:
 
                 for post in posts:
                     file_url = post['file']['url']
+                    md5 = post['file']['md5']
+                    sql_md5_search = Image.query.filter_by(md5=md5).first()
+                    if sql_md5_search:
+                        print(f"File {md5} already exists in database.")
+                        last_id = post['id'] + 1
+                        continue
                     if not file_url:
+                        last_id = post['id'] + 1
                         continue
                     file_name = os.path.basename(file_url)
                     file_path = os.path.join(self.output_folder, file_name)
