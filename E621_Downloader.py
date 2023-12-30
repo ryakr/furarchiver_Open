@@ -18,7 +18,7 @@ MAPPING = {
 
 
 class E621Downloader:
-    def __init__(self, output_folder='images', download_status=None):
+    def __init__(self, db_session, output_folder='images', download_status=None):
         self.base_url = "https://e621.net/posts.json"
         self.headers = {
             'User-Agent': 'E621Downloader/1.0 (by your_username_on_e621)'
@@ -27,6 +27,7 @@ class E621Downloader:
         self.output_folder = output_folder
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
+        self.db_session = db_session
         
 
     def download_image(self, image_url, file_name, artist_key):
@@ -83,6 +84,7 @@ class E621Downloader:
                 for post in posts:
                     file_url = post['file']['url']
                     md5 = post['file']['md5']
+                    post_artist = post['tags']['artist']
                     sql_md5_search = Image.query.filter_by(md5=md5).first()
                     if sql_md5_search:
                         print(f"File {md5} already exists in database.")
@@ -95,7 +97,7 @@ class E621Downloader:
                     file_path = os.path.join(self.output_folder, file_name)
 
                     if self.download_image(file_url, file_path, artist_key):
-                        self.save_post_to_db(post)
+                        self.save_post_to_db(post, artist_key)
                     downloaded_files += 1
                     self.update_status(artist_key, "Downloading", downloaded_files=downloaded_files)
 
@@ -119,16 +121,19 @@ class E621Downloader:
             self.download_status[artist_key]["speed"] = f"{speed:.2f} KB/s"
             self.download_status[artist_key]["current_file_percent"] = current_file_percent
 
-    def save_post_to_db(self, post):
-        with db.session.begin():
+    def save_post_to_db(self, post, artist_key):
+        with self.db_session.no_autoflush:
+            print("Saving post to database.")
             artist_names = post['tags']['artist']
             for artist_name in artist_names:
-                artist = Artist.query.filter_by(name=artist_name).first()
-                if not artist:
-                    artist = Artist(name=artist_name, from_e621=True)
-                    db.session.add(artist)
-                else:
-                    artist.from_e621 = True
+                if artist_name == artist_key:
+                    artist = Artist.query.filter_by(name=artist_name).first()
+                    if not artist:
+                        artist = Artist(name=artist_name, from_e621=True)
+                        self.db_session.add(artist)
+
+                    else:
+                        artist.from_e621 = True
             
             image = Image.query.filter_by(md5=post['file']['md5']).first()
             if not image:
@@ -141,8 +146,9 @@ class E621Downloader:
                     score=post['score']['total'],
                     scored=True
                 )
-                db.session.add(image)
-
+                self.db_session.add(image)
+            self.db_session.commit()
+            print(image)
             for tag_category, tag_list in post['tags'].items():
                 category_id = MAPPING.get(tag_category)
                 if category_id is not None:
@@ -151,11 +157,14 @@ class E621Downloader:
                         tag = Tag.query.filter_by(tag_name=tag_name).first()
                         if not tag:
                             tag = Tag(tag_name=tag_name, category=category_id)
-                            db.session.add(tag)
+                            self.db_session.add(tag)
+                            self.db_session.commit()
+                            #ge
+                        print(tag.id)
                         image_tag = ImageTags(image_id=image.id, tag_id=tag.id)
-                        db.session.add(image_tag)
+                        self.db_session.add(image_tag)
+            self.db_session.commit()
 
-            db.session.commit()
 
 # This allows the script to be imported without immediately executing the download process.
 if __name__ == "__main__":

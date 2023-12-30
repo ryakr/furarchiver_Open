@@ -109,8 +109,6 @@ class Downloader:
 
     def add_to_queue(self, artist_name, source='default'):
         with self.condition: 
-            if source.lower() == 'default':
-                artist_name = artist_name.replace("_", "")
             if artist_name.strip().lower() in self.queue:
                 print(f"{artist_name} is already in the queue.")
                 return 
@@ -216,10 +214,11 @@ class Downloader:
         if source.lower() == 'e621':
             print(f"Downloading {artist_key} from e621")
             DL_Path = os.path.join(destination, artist_key)
-            e621_dl = E621Downloader(output_folder=DL_Path, download_status=self.download_status)
-            e621_dl.download_from_id(start_id=0, tags=artist_key, limit=1000)
+            e621_dl = E621Downloader(self.db_session, output_folder=DL_Path, download_status=self.download_status)
+            e621_dl.download_from_id(start_id=0, tags=artist_key, limit=1000, artist_key=artist_key)
         else:
-            artist_url = urljoin(self.base_url, artist_key)
+            tempkey = artist_key.replace('_', '')
+            artist_url = urljoin(self.base_url, tempkey)
             print(f"Downloading {artist_key} from {artist_url}")
             self.download_status[artist_key]["status"] = "Contacting Back End"
             response = requests.get(artist_url, proxies=self.proxies, timeout=120)
@@ -273,8 +272,9 @@ class Downloader:
         file_size_from_website = size_str_to_bytes(size_str)
         if file_size_from_website == 0:
             remoteid = name.split('.')[0]
+            tempkey = artist_key.replace('_', '')
             #https://d.furaffinity.net/art/{artist_key}/{remoteid}/{name}{extenstion}
-            response2 = requests.get(f"https://d.furaffinity.net/art/{artist_key}/{remoteid}/{name}{extenstion}")
+            response2 = requests.get(f"https://d.furaffinity.net/art/{tempkey}/{remoteid}/{name}{extenstion}")
             if response2.status_code == 200:
                 start_time = datetime.datetime.now()
                 strings = "failure"

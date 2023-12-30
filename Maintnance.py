@@ -256,6 +256,11 @@ def sql_database_cleanup(app, FA_FOLDER):
             artist_dict[artist.id] = artist.name
         print(artist_dict)
         for index, image in enumerate(images):
+            if image.artist_id is None:
+                print(f"Image {image.file_name}{image.file_type} has no artist ID, deleting from database...")
+                db.session.delete(image)
+                yield (index + 1), total_images  
+                continue
             artist = artist_dict.get(image.artist_id)
             image_path = os.path.join(FA_FOLDER, artist, f"{image.file_name}{image.file_type}")
             if not os.path.exists(image_path):
@@ -268,5 +273,13 @@ def sql_database_cleanup(app, FA_FOLDER):
                 with open(image_path, 'rb') as file:
                     image.md5 = hashlib.md5(file.read()).hexdigest()
                 yield (index + 1), total_images  
+                continue
+        #if artists have no images, delete them
+        artists = db.session.query(Artist).all()
+        for artist in artists:
+            images = db.session.query(Image).filter(Image.artist_id == artist.id).all()
+            if len(images) == 0:
+                print(f"Artist {artist.name} has no images, deleting from database...")
+                db.session.delete(artist)
                 continue
         db.session.commit()          

@@ -27,7 +27,7 @@ class Image(db.Model):
     autotagged = db.Column(db.Boolean, default=False)
 
 class Tag(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tag_name = db.Column(db.String(50))
     category = db.Column(db.Integer)
     count = db.Column(db.Integer)
