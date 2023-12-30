@@ -5,7 +5,7 @@ This repository is aimed at recreating furarchiver with additional features I fi
 ## Features
 - **Pulling All (including Deleted) FA Posts**: Retrieve deleted FA posts via a backend (accessed over Tor).
 - **Integration with E621**: Option to pull posts from E621.
-- **Quality Checks for FA Posts**: Re-pull posts from FA if the backend downloaded a bad version.
+- **Grabs Missing Backend FA Posts**: Re-pull posts from FA if the backend downloaded a bad version.
 - **Tag-Based Search**: Utilize tags from E621 when available, or apply auto-tagging.
 - **Score-Based Search**: Search posts based on E621 score, or use an AI-generated score if not available from E621.
 - **Aesthetic Score**: Evaluate posts based on an AI-generated aesthetic score.
