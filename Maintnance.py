@@ -162,8 +162,10 @@ def find_images_and_update_tags(app, use_csv=False):
             if iteration >= 2:
                 image.check_again = False
             image.checked_count = iteration
+            print(f"Checking image {image.file_name}{image.file_type}...")
             if is_md5_in_file(image.md5, md5_path) or not use_csv:
                 time.sleep(1)
+                print(f"Checking MD5 {image.md5}...")
                 tags = get_tags_for_md5(image.md5, image)
                 print(image.md5)
                 if use_csv and (tags is None or len(tags) == 0):
@@ -181,6 +183,9 @@ def find_images_and_update_tags(app, use_csv=False):
                         tag = Tag(id=new_id, tag_name=tag_name, count=1, category=category_int)
                         db.session.add(tag)
                         db.session.commit()
+                    if tag.count is None:
+                        print(f"Tag {tag.tag_name} has no count, setting to 1")
+                        tag.count = 1
                     countz = tag.count + 1
                     image.tags.append(tag)
                     tag.count = countz
@@ -190,6 +195,7 @@ def find_images_and_update_tags(app, use_csv=False):
 
 def get_tags_for_md5(md5_values, imagedb):
     URL = f"https://e621.net/posts.json?tags=md5:{md5_values}"
+    print(URL)
     response = requests.get(URL, headers={'User-Agent': 'FurArchiver/1.0'})
     if response.status_code != 200:
         raise ValueError(f"Request failed with status code {response.status_code}")

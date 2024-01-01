@@ -56,34 +56,3 @@ class MLP(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"},
         }
-
-
-class ILModel(MLP):
-    """
-    Irreducible loss model for RHO-Loss
-    """
-
-    def compute_loss(self, batch):
-        idx, x, y = batch
-        loss = super().compute_loss((x, y))
-        return loss
-
-
-class RLossModel(MLP):
-    """
-    Reducible loss model for RHO-Loss
-    """
-
-    def __init__(self, input_size, selection_method=None, **kwargs):
-        super().__init__(input_size, **kwargs)
-        self.selection_method = selection_method
-
-    def compute_loss(self, batch):
-        idx, x, y = batch
-        loss = super().compute_loss((x, y))
-        return loss
-
-    def training_step(self, batch, batch_idx):
-        batch = self.selection_method(batch=batch, model=self, loss_function=self.loss_function)
-        loss = super().training_step(batch, batch_idx)
-        return loss
