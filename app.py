@@ -18,6 +18,7 @@ import bleach
 from werkzeug.utils import secure_filename
 import hashlib
 from tqdm import tqdm
+import html
 
 app = Flask(__name__)
 base_url = "http://g6jy5jkx466lrqojcngbnksugrcfxsl562bzuikrka5rv7srgguqbjid.onion/fa/"
@@ -146,7 +147,12 @@ def create_or_get_tag_file(image, cache_dir, artist_name):
             if artist_name not in image.tags:
                 tag_file.write(artist_name + ', ')
             for tag in image.tags:
-                tag_file.write(tag.tag_name + ', ')
+                tag_to_write = tag.tag_name.replace('_', ' ')
+                #if not last, append comma
+                if tag != image.tags[-1]:
+                    tag_file.write(tag_to_write + ', ')
+                else:
+                    tag_file.write(tag_to_write)
     
     return tag_file_path
 
@@ -420,12 +426,15 @@ def search_page():
 
 def search_filter(search_input, sort_by="id", artist_name=None):
     files_query = db.session.query(Image)
+    dangerous = html.unescape(search_input)
     search_input = sanitize_input(search_input)
     # Use regular expressions to find tags and artist
-    tag_match = re.search(r"tags:([a-zA-Z0-9, _]+)", search_input)
-    artist_match = re.search(r"artist:([a-zA-Z0-9 -_]+)", search_input)
-    score_match = re.search(r"score([><][0-9.]+)", search_input)
+    tag_match = re.search(r"tags:([a-zA-Z0-9, _]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
+    artist_match = re.search(r"artist:([a-zA-Z0-9 -_]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
+    score_match = re.search(r"score:([><][0-9.]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
 
+    print(dangerous)
+    print(tag_match, artist_match, score_match)
     if tag_match:
         tags = tag_match.group(1).split(',')
         formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
@@ -438,6 +447,7 @@ def search_filter(search_input, sort_by="id", artist_name=None):
         files_query = files_query.join(tag_count_subquery, Image.id == tag_count_subquery.c.image_id)
 
     if artist_match:
+        print(artist_match)
         artist_name_RE = artist_match.group(1).strip()
         artist_id = Artist.query.filter_by(name=artist_name_RE).first()
         if artist_id:
@@ -447,6 +457,7 @@ def search_filter(search_input, sort_by="id", artist_name=None):
             return files_query.filter(Image.id == -1)
 
     if score_match:
+        print(score_match)
         operator, score = score_match.group(1)[0], float(score_match.group(1)[1:])
         comparison = Image.score > score if operator == '>' else Image.score < score
         files_query = files_query.filter(comparison)
@@ -460,9 +471,72 @@ def search_filter(search_input, sort_by="id", artist_name=None):
             files_query = files_query.filter(Image.artist_id == artist_id)
         else:
             return files_query.filter(Image.id == -1)
-
+    #not deleted
+    files_query = files_query.filter(Image.Deleted == False)
     files_query = query_database_with_sorting(files_query, sort_by)
     return files_query
+
+@app.route('/get-tags/<int:image_id>')
+def get_tags(image_id):
+    # Fetch tags from database
+    tags = Image.query.get(image_id).tags
+    return jsonify({'tags': [tag.tag_name for tag in tags]})
+
+@app.route('/update-tags/<int:image_id>', methods=['POST'])
+def update_tags(image_id):
+    data = request.get_json()
+    tags_to_add = data.get('tagsToAdd', [])
+    tags_to_remove = data.get('tagsToRemove', [])
+    
+    # Update tags in the database for the image
+    image = Image.query.get(image_id)
+    if not image:
+        return jsonify({'status': 'Image not found'}), 404
+    print("Tags to add: ", tags_to_add)
+    print("Tags to remove: ", tags_to_remove)
+    #return jsonify({'status': 'success'})
+    # Assuming you have a relationship set up for tags in your Image model
+    # Add new tags
+    for tag_name in tags_to_add:
+        tag = Tag.query.filter_by(tag_name=tag_name).first()
+        if not tag:
+            # Create the tag if it doesn't exist
+            tag = Tag(tag_name=tag_name)
+            db.session.add(tag)
+            # Assuming you commit at the end or have autocommit
+        image.tags.append(tag)
+
+    # Remove tags
+    for tag_name in tags_to_remove:
+        tag = Tag.query.filter_by(tag_name=tag_name).first()
+        if tag:
+            image.tags.remove(tag)
+    image.Edited = True
+    db.session.commit()
+
+    return jsonify({'status': 'success'})
+
+#Clear image.Edited
+@app.route('/clear-edited/<int:image_id>', methods=['POST'])
+def clear_edited(image_id):
+    image = Image.query.get(image_id)
+    if not image:
+        return jsonify({'status': 'Image not found'}), 404
+    image.Edited = False
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+@app.route('/delete-image/<int:image_id>', methods=['POST'])
+def delete_image(image_id):
+    image = Image.query.get(image_id)
+    if not image:
+        return jsonify({'status': 'Image not found'}), 404
+    image_path = os.path.join(FA_FOLDER, image.artist.name, image.file_name + image.file_type)
+    if os.path.exists(image_path):
+        os.remove(image_path)
+    image.Deleted = True
+    db.session.commit()
+    return jsonify({'status': 'success'})
 
 @app.route('/results', methods=['GET', 'POST'])
 def search_results():
@@ -488,9 +562,10 @@ def search_results():
 
     paginated_files = files_query.paginate(page=page, max_per_page=50, error_out=False)
     image_paths = [url_for('fa_file', artist_name=image.artist.name, filename=f"{image.file_name}{image.file_type}") for image in paginated_files.items]
+    edited_status = [image.Edited for image in paginated_files.items]
     total_pages = paginated_files.pages
     total_results = paginated_files.total
-    zipped_files = zip(image_paths, paginated_files.items)
+    zipped_files = zip(image_paths, paginated_files.items, edited_status)
 
     if len(image_paths) == 0:
         return render_template('results.html', error='No results found', sort_by=sort_by, search_input=search_input, files=image_paths, total_pages=total_pages, current_page=page, total_results=total_results, zipped_files=zipped_files)

@@ -5,10 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Results - Archive Downloader</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK" crossorigin="anonymous"></script>
+	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 	<style>
 	body {
             padding-top: 20px;
         }
+		.btn-danger {
+			border-radius: 20px; /* Rounded edges */
+			background-color: #dc3545; /* Red */
+			border-color: #dc3545; /* Red */
+			padding: 10px 20px;
+			box-shadow: 0 3px 6px 0 rgba(0, 0, 0, 0.16);
+			font-size: 16px; 
+			color: white;}
         .btn-primary, .btn-secondary {
             border-radius: 20px; /* Rounded edges */
             padding: 10px 20px; /* Larger padding for a bigger button */
@@ -70,13 +80,30 @@
 		height: auto;
 	}
 
+	.edit-tags-btn {
+    position: absolute;
+    bottom: 45px;
+    right: 10px;
+    /* other button styles */
+	}
+	.del-tags-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    /* other button styles */
+	}
+
+	.image-container.manually-edited {
+		border: 2px solid green;
+	}
+
 	.image-info {
 		position: absolute;
 		bottom: 0;
 		background: rgba(0, 0, 0, 0.5); /* Gray fade effect */
 		color: white;
 		width: 100%;
-		text-align: center;
+		text-align: left;
 		padding: 10px;
 		visibility: hidden;
 		opacity: 0;
@@ -87,6 +114,67 @@
 		visibility: visible;
 		opacity: 1;
 	}
+
+
+	.modal-content {
+	position: relative;
+	}
+
+	.image-view {
+	width: 100%;
+	height: 200px; /* Adjust as needed */
+	background-color: #eee; /* Placeholder styling */
+	margin-bottom: 20px;
+	}
+
+	.tag-input-box {
+	margin-bottom: 20px;
+	width: 100%;
+	}
+
+	.tag-container {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	}
+
+	.tag-bubble {
+	background-color: blue;
+	color: white;
+	padding: 5px 10px;
+	border-radius: 20px;
+	display: flex;
+	align-items: center;
+	}
+
+	.tag-bubble span {
+	margin-right: 10px;
+	}
+
+	.tag-bubble .remove-tag {
+	cursor: pointer;
+	color: #ccc;
+	}
+
+	.modal-image {
+    max-width: 90%; /* Limits the width to 90% of the container */
+    max-height: 70vh; /* Limits the height to 70% of the viewport height */
+    display: block; /* Display block to remove bottom margin/space */
+    margin: auto; /* Center the image horizontally and vertically */
+    border-radius: 5px; /* Optional: adds rounded corners to the image */
+	}
+
+	#modalImageContainer {
+		display: flex; /* Use flexbox for centering */
+		justify-content: center; /* Horizontally center the content */
+		align-items: center; /* Vertically center the content */
+		height: auto; /* Height adjusts to the content */
+		max-height: 70vh; /* Maximum height constraint for the container */
+		width: 100%; /* Container takes full width of its parent */
+		padding: 20px; /* Padding around the image within the container */
+		overflow: auto; /* Allows scrolling if the image is larger than the container */
+	}
+
 
 	</style>
 
@@ -165,16 +253,20 @@
         {% else %}
 			<h3>Files for artist: {{ artist_name }}</h3>
 			<div class="row">
-				{% for file_url, image in zipped_files %}
-					<div class="image-container">
+				{% for file_url, image, Edited in zipped_files %}
+				<div class="image-container" data-image-id="{{ image.id }}">
 						<a href="{{ file_url }}" target="_blank">
 							<img src="{{ file_url }}" class="thumbnail img-fluid">
 							<div class="image-info">
 								<span>ID: {{ image.id }}</span>
-								<span>Score: {{ image.score }}</span>
+								<!-- Make sure score is rounded -->
+								<span>Score: {{ image.score|round }}</span>
 							</div>
 						</a>
+						<button class="edit-tags-btn" style="background-color: {{ 'green' if Edited else 'red' }};">Edit Tags</button>
+						<button class="del-tags-btn" style="background-color: red">Delete</button>
 					</div>
+					
 				{% endfor %}
 			</div>
 			<form action="/download" method="post" id="downloadForm">
@@ -224,8 +316,45 @@
 			</form>
 		</div>
     </div>
+<!-- Tag Editing Modal -->
+<div id="tagEditModal" class="modal" tabindex="-1" role="dialog">
+	<div class="modal-dialog" role="document">
+	  <div class="modal-content">
+		<div class="modal-header">
+		  <h5 class="modal-title">Edit Image Tags</h5>
+		  <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+			<span aria-hidden="true">&times;</span>
+		  </button>
+		</div>
+		<div class="modal-body">
+		  <!-- Image placeholder -->
+		  <div id="modalImageContainer" class="image-view">IMAGE VIEW</div>
+  
+		  <!-- Hidden input field to store the editing image ID -->
+		  <input type="hidden" id="editImageId" name="imageId">
+		  <input type="hidden" id="imagefileurl" name="fileurl">
+  
+		  <!-- Text input box for new tags -->
+		  <input type="text" id="newTagInput" placeholder="Add a tag" class="form-control tag-input-box">
+  
+		  <!-- Container for tag bubbles -->
+		  <div id="tagContainer" class="tag-container">
+			<!-- Existing tag bubbles will be added here dynamically -->
+		  </div>
+		</div>
+		<div class="modal-footer">
+		  <button type="button" class="btn btn-danger" id="ClearEdited">Clear Edited</button>
+		  <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+		  <button type="button" class="btn btn-primary" id="saveTagChanges">Accept</button>
+		</div>
+	  </div>
+	</div>
+  </div>
+  
 {% include '_bottom_bar.html' %}
 <script>
+	//
+let TheButton = document.getElementById('edit-tags-btn');
 	document.getElementById('downloadForm').onsubmit = function(e) {
 		e.preventDefault();
 		var formData = new FormData(this);
@@ -272,6 +401,156 @@
             adjustPadding();
         }
     }
+	document.querySelectorAll('.edit-tags-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const imageContainer = this.closest('.image-container');
+		const imageurl = imageContainer.querySelector('img').src;
+        const imageId = imageContainer.dataset.imageId;
+		TheButton = this;
+
+        // Fetch tags from the server
+        fetch(`/get-tags/${imageId}`)
+            .then(response => response.json())
+            .then(data => {
+                showModalWithTags(imageId, data.tags, imageurl);
+            })
+            .catch(error => {
+                console.error('Error fetching tags:', error);
+            });
+    });
+});
+let originalTags = [];
+// Assuming you have a function to show the modal...
+function showModalWithTags(imageId, tagsArray, imageurl) {
+    document.getElementById('editImageId').value = imageId;
+	document.getElementById('modalImageContainer').innerHTML = `<img src="${imageurl}" class="modal-image">`;
+    populateTags(tagsArray);
+	originalTags = [...tagsArray]; 
+	$('#tagEditModal').modal('show');
+    // Here you would have the logic to display the modal
+    // If using Bootstrap: $('#tagEditModal').modal('show');
+    // If using Vanilla JS, you may need to set the style to 'display: block' or similar
+}
+	document.getElementById('newTagInput').addEventListener('keyup', function(event) {
+	if (event.key === 'Enter') {
+		addTag(event.target.value);
+		event.target.value = ''; // Clear the input box after adding the tag
+	}
+	});
+
+	function addTag(tagName) {
+		const tagBubble = createTagBubble(tagName);
+		tagContainer.appendChild(tagBubble);
+	}
+
+	// Function to create a tag bubble
+	function createTagBubble(tagName) {
+		const bubble = document.createElement('div');
+		bubble.className = 'tag-bubble';
+		bubble.textContent = tagName;
+
+		const removeBtn = document.createElement('span');
+		removeBtn.textContent = ' ×';
+		removeBtn.className = 'remove-tag';
+		removeBtn.onclick = function() {
+			bubble.remove();
+		};
+
+		bubble.appendChild(removeBtn);
+
+		return bubble;
+	}
+
+	// Function to populate the modal with existing tags
+	function populateTags(tagsArray) {
+		const tagContainer = document.getElementById('tagContainer');
+		tagContainer.innerHTML = ''; // Clear existing tags
+
+		tagsArray.forEach(tag => {
+			const tagBubble = createTagBubble(tag);
+			tagContainer.appendChild(tagBubble);
+		});
+	}
+	// Example usage:
+	// populateTags(['TAG1', 'TAG2', 'TAG3']); // Call this function with the array of tags when the modal opens
+	
+	document.querySelectorAll('.del-tags-btn').forEach(button => {
+	button.addEventListener('click', function() {
+		const imageContainer = this.closest('.image-container');
+		const imageId = imageContainer.dataset.imageId;
+		TheButton = this;
+		fetch(`/delete-image/${imageId}`, {
+			method: 'POST'
+		})
+		.then(response => response.json())
+		.then(data => {
+			// Handle response
+			console.log(data.status);
+			// Set button color to green temporarily
+			TheButton.style.backgroundColor = 'green';
+
+		})
+		.catch(error => {
+			console.error('Error clearing edited status:', error);
+		});
+	});
+});
+
+
+document.getElementById('ClearEdited').addEventListener('click', function() {
+	const imageId = document.getElementById('editImageId').value;
+	fetch(`/clear-edited/${imageId}`, {
+		method: 'POST'
+	})
+	.then(response => response.json())
+	.then(data => {
+		// Handle response
+		console.log(data.status);
+		// Set ClearEdited button color to green temporarily
+		document.getElementById('ClearEdited').style.backgroundColor = 'green';
+		document.getElementById('ClearEdited').style.borderColor = 'green';
+		setTimeout(function() {
+			document.getElementById('ClearEdited').style.backgroundColor = 'red';
+			document.getElementById('ClearEdited').style.borderColor = 'red';
+		}, 1000);
+
+	})
+	.catch(error => {
+		console.error('Error clearing edited status:', error);
+	});
+});
+
+document.getElementById('saveTagChanges').addEventListener('click', function() {
+    const imageId = document.getElementById('editImageId').value;
+    const allTags = Array.from(document.querySelectorAll('.tag-bubble'))
+        .map(bubble => bubble.firstChild.textContent); // Get the tag text content
+
+	console.log(allTags);
+	console.log(originalTags);
+    const tagsToAdd = allTags.filter(tag => !originalTags.includes(tag));
+    const tagsToRemove = originalTags.filter(tag => !allTags.includes(tag));
+
+    fetch(`/update-tags/${imageId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 'tagsToAdd': tagsToAdd, 'tagsToRemove': tagsToRemove })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Handle response
+        console.log(data.status);
+		originalTags = [...allTags];
+        // Close the modal, clear the tags, and refresh the tags view as necessary
+		$('#tagEditModal').modal('hide');
+		TheButton.style.backgroundColor = 'green';
+		//TheButton.style.borderColor = 'green';
+    })
+    .catch(error => {
+        console.error('Error updating tags:', error);
+    });
+});
 </script>
 </body>
 </html>

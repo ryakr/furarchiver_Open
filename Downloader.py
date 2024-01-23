@@ -268,6 +268,9 @@ class Downloader:
             return
         name, extenstion = os.path.splitext(sanitized_filename)
         
+        if Image.query.filter_by(file_name=name).first() is not None:
+            return
+        
         file_path = os.path.join(artist_directory, sanitized_filename)
         file_size_from_website = size_str_to_bytes(size_str)
         if file_size_from_website == 0:
