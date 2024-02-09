@@ -10,6 +10,7 @@ import gzip
 import shutil
 import pandas as pd
 from Tagger import _8305_Tagger
+from sqlalchemy import or_
 
 
 MAPPING = {
@@ -26,8 +27,10 @@ MAPPING = {
 from datetime import datetime, timedelta
 today = datetime.now()
 yesterday = today - timedelta(days=1)
+df = None
 
 def download_and_extract_csv(url, output_path):
+    print(f"Downloading file from {url}...")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     # Download the file
     response = requests.get(url, stream=True)
@@ -115,6 +118,8 @@ def extract_md5_to_file(csv_path, md5_file_path):
     print(f"Extracting MD5 values from {csv_path}...")
     df = pd.read_csv(csv_path, usecols=['md5'])  # Load only the 'md5' column
     print(f"Saving MD5 values to {md5_file_path}...")
+    if os.path.exists(md5_file_path):
+        os.remove(md5_file_path)
     df.to_csv(md5_file_path, index=False, header=False)
     print(f"MD5 values saved to {md5_file_path}")
 
@@ -126,14 +131,20 @@ def delete_file(file_path):
         print(f"File not found: {file_path}")
 
 def is_md5_in_file(md5, md5_file_path):
-    with open(md5_file_path, 'r') as file:
-        if md5 in file.read():
-            return True
-    return False
+    global df
+    if df is None:
+        df = pd.read_csv(md5_file_path)
+    #all hashes are in column 0
+    return md5 in df.values
 
 def prepFIAUT(csv_path, md5_file_path):
-    if not os.path.exists(md5_file_path):
-        download_and_extract_csv(f"https://e621.net/db_export/posts-{yesterday.year}-{yesterday.month}-{yesterday.day}.csv.gz", csv_path)
+    #if it doesnt exist or its older than 1 week, download it
+    print((datetime.now() - datetime.fromtimestamp(os.path.getmtime(md5_file_path))).days)
+    if not os.path.exists(md5_file_path) or (datetime.now() - datetime.fromtimestamp(os.path.getmtime(md5_file_path))).days > 7:
+        #url day/month need to always be 2 digits, yesterday.day gets 1 digit if its 1-9
+        month = '{:02d}'.format(yesterday.month)
+        day = '{:02d}'.format(yesterday.day)
+        download_and_extract_csv(f"https://e621.net/db_export/posts-{yesterday.year}-{month}-{day}.csv.gz", csv_path)
         extract_md5_to_file(csv_path, md5_file_path)
     if os.path.exists(csv_path):
         delete_file(csv_path)
@@ -142,7 +153,9 @@ def prepFIAUT(csv_path, md5_file_path):
 
 
 def find_images_and_update_tags(app, use_csv=False):
-    csv_path = os.path.join(app.root_path, 'CSV', f'posts-{yesterday.year}-{yesterday.month}-{yesterday.day}.csv.csv')
+    month = '{:02d}'.format(yesterday.month)
+    day = '{:02d}'.format(yesterday.day)
+    csv_path = os.path.join(app.root_path, 'CSV', f"posts-{yesterday.year}-{month}-{day}.csv")
     md5_path = os.path.join(app.root_path, 'CSV', 'md5s.csv')
     prepFIAUT(csv_path, md5_path)
     with app.app_context():
@@ -151,7 +164,7 @@ def find_images_and_update_tags(app, use_csv=False):
             outerjoin(ImageTags, Image.id == ImageTags.image_id).\
             filter(Image.md5.isnot(None)).\
             filter(Image.check_again == True).\
-            filter(ImageTags.tag_id.is_(None)).\
+            filter(or_(ImageTags.tag_id.is_(None), Image.autotagged == True)).\
             all()
 
 
@@ -174,6 +187,12 @@ def find_images_and_update_tags(app, use_csv=False):
                 if len(tags) > 0:
                     print(f"Found {len(tags)} tags for {image.md5}")
                     image.check_again = False
+                    if image.autotagged:
+                        print(f"Image {image.file_name}{image.file_type} was autotagged, clearing old tags...")
+                        image.autotagged = False
+                        #clear old tags
+                        image.tags = []
+                        
                 for tag_name, category_int in tags.items():
                     tag = Tag.query.filter_by(tag_name=tag_name).first()
                     if not tag:
@@ -191,6 +210,7 @@ def find_images_and_update_tags(app, use_csv=False):
                     tag.count = countz
                 db.session.commit()
             yield (index + 1), total_images
+        df = None
         
 
 def get_tags_for_md5(md5_values, imagedb):

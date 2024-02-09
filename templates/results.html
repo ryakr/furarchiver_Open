@@ -176,6 +176,13 @@
 	}
 
 
+	.autotag-icon, .e621-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 50px; /* Adjust the size of the icon */
+    height: 50px;
+	}
 	</style>
 
 </head>
@@ -263,6 +270,14 @@
 								<span>Score: {{ image.score|round }}</span>
 							</div>
 						</a>
+						<!-- Conditionally render autotag icon -->
+						{% if image.autotagged %}
+							<img src="{{ url_for('static', filename='autotag-icon.png') }}" class="autotag-icon" alt="Autotagged">
+						{% endif %}
+						<!-- Conditionally render E621 icon -->
+						{% if image.tags and not image.autotagged %}
+							<img src="{{ url_for('static', filename='e621-icon.png') }}" class="e621-icon" alt="E621 tags">
+						{% endif %}
 						<button class="edit-tags-btn" style="background-color: {{ 'green' if Edited else 'red' }};">Edit Tags</button>
 						<button class="del-tags-btn" style="background-color: red">Delete</button>
 					</div>

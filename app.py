@@ -379,7 +379,9 @@ def artists_grid():
 
     artist_images = []
     for artist in paginated_artists.items:
-        top_image = Image.query.filter_by(artist_id=artist.id).order_by(Image.score.desc()).first()
+        #get top image but only if it's not deleted
+        top_image = Image.query.filter_by(artist_id=artist.id, Deleted=False).order_by(Image.score.desc()).first()
+        #top_image = Image.query.filter_by(artist_id=artist.id).order_by(Image.score.desc()).first()
         if top_image:
             image_url = url_for('fa_file', artist_name=artist.name, filename=f"{top_image.file_name}{top_image.file_type}")
             artist_images.append((artist, image_url))
@@ -395,6 +397,22 @@ def maintenance_route():
 @app.route('/maintenance')
 def maintenance():
     return render_template('maintenance.html')
+
+@app.route('/browse')
+def browse_images():
+    page = request.args.get('page', 1, type=int)  # Get the page number from query parameters
+
+    # Use the search_filter function to get all images that are not deleted
+    files_query = search_filter("", sort_by="id")
+    paginated_files = files_query.paginate(page=page, max_per_page=50, error_out=False)
+
+    image_paths = [url_for('fa_file', artist_name=image.artist.name, filename=f"{image.file_name}{image.file_type}") for image in paginated_files.items]
+    edited_status = [image.Edited for image in paginated_files.items]
+    total_pages = paginated_files.pages
+    total_results = paginated_files.total
+    zipped_files = zip(image_paths, paginated_files.items, edited_status)
+
+    return render_template('results.html', total_results=total_results, search_input="Browse All Images", sort_by="id", files=image_paths, total_pages=total_pages, current_page=page, zipped_files=zipped_files)
 
 @app.route('/')
 def home():
@@ -433,44 +451,47 @@ def search_filter(search_input, sort_by="id", artist_name=None):
     artist_match = re.search(r"artist:([a-zA-Z0-9 -_]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
     score_match = re.search(r"score:([><][0-9.]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
 
-    print(dangerous)
+    print(search_input.lower())
+    print(search_input.lower() == "browse all images")
     print(tag_match, artist_match, score_match)
-    if tag_match:
-        tags = tag_match.group(1).split(',')
-        formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
-        tag_count_subquery = db.session.query(ImageTags.image_id, func.count(ImageTags.tag_id).label('tag_count')) \
-                                       .join(Tag, ImageTags.tag_id == Tag.id) \
-                                       .filter(Tag.tag_name.in_(formatted_tags)) \
-                                       .group_by(ImageTags.image_id) \
-                                       .having(func.count(ImageTags.tag_id) == len(formatted_tags)) \
-                                       .subquery()
-        files_query = files_query.join(tag_count_subquery, Image.id == tag_count_subquery.c.image_id)
+    #if browse all images, skip regex
+    if not search_input == "" and not search_input.lower() == "browse all images":            
+        if tag_match:
+            tags = tag_match.group(1).split(',')
+            formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
+            tag_count_subquery = db.session.query(ImageTags.image_id, func.count(ImageTags.tag_id).label('tag_count')) \
+                                        .join(Tag, ImageTags.tag_id == Tag.id) \
+                                        .filter(Tag.tag_name.in_(formatted_tags)) \
+                                        .group_by(ImageTags.image_id) \
+                                        .having(func.count(ImageTags.tag_id) == len(formatted_tags)) \
+                                        .subquery()
+            files_query = files_query.join(tag_count_subquery, Image.id == tag_count_subquery.c.image_id)
 
-    if artist_match:
-        print(artist_match)
-        artist_name_RE = artist_match.group(1).strip()
-        artist_id = Artist.query.filter_by(name=artist_name_RE).first()
-        if artist_id:
-            artist_id = artist_id.id
-            files_query = files_query.filter(Image.artist_id == artist_id)
-        else:
-            return files_query.filter(Image.id == -1)
+        if artist_match:
+            print(artist_match)
+            artist_name_RE = artist_match.group(1).strip()
+            artist_id = Artist.query.filter_by(name=artist_name_RE).first()
+            if artist_id:
+                artist_id = artist_id.id
+                files_query = files_query.filter(Image.artist_id == artist_id)
+            else:
+                return files_query.filter(Image.id == -1)
 
-    if score_match:
-        print(score_match)
-        operator, score = score_match.group(1)[0], float(score_match.group(1)[1:])
-        comparison = Image.score > score if operator == '>' else Image.score < score
-        files_query = files_query.filter(comparison)
-    if artist_name or not (tag_match or artist_match or score_match):
-        if not (tag_match or artist_match or score_match) and not artist_name:
-            artist_name = search_input
-        search_input += f" artist:{artist_name}"
-        artist_id = Artist.query.filter_by(name=artist_name).first()
-        if artist_id:
-            artist_id = artist_id.id
-            files_query = files_query.filter(Image.artist_id == artist_id)
-        else:
-            return files_query.filter(Image.id == -1)
+        if score_match:
+            print(score_match)
+            operator, score = score_match.group(1)[0], float(score_match.group(1)[1:])
+            comparison = Image.score > score if operator == '>' else Image.score < score
+            files_query = files_query.filter(comparison)
+        if artist_name or not (tag_match or artist_match or score_match):
+            if not (tag_match or artist_match or score_match) and not artist_name:
+                artist_name = search_input
+            search_input += f" artist:{artist_name}"
+            artist_id = Artist.query.filter_by(name=artist_name).first()
+            if artist_id:
+                artist_id = artist_id.id
+                files_query = files_query.filter(Image.artist_id == artist_id)
+            else:
+                return files_query.filter(Image.id == -1)
     #not deleted
     files_query = files_query.filter(Image.Deleted == False)
     files_query = query_database_with_sorting(files_query, sort_by)
@@ -633,7 +654,8 @@ if __name__ == '__main__':
     def signal_handler(sig, frame):
         print("Ctrl + C detected. Stopping...")
         downloader.stop_threads()  # Stop the threads gracefully
-        sys.exit(0)  # Exit the script
+        print("Exiting...")
+        os.kill(os.getpid(), signal.SIGINT)  # Send a SIGINT signal to the current process
 
     signal.signal(signal.SIGINT, signal_handler)
     app.run(debug=True, use_reloader=False)

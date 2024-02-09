@@ -71,6 +71,7 @@ class Downloader:
         self.source = source
         self.download_destination = FA_FOLDER
         self.condition = threading.Condition()  # Threading condition
+        self._stop_event = threading.Event()
         self.start_threads() 
 
     def add_artist_to_db(self, artist_name):
@@ -183,6 +184,8 @@ class Downloader:
     def start_threads(self):
         def worker():
             while True:
+                if self._stop_event.is_set():
+                    break
                 with self.condition:  # Acquire the condition lock
                     while self.download_queue.empty():  # Check if queue is empty
                         self.condition.wait()  # Wait for an item to be added
@@ -200,13 +203,19 @@ class Downloader:
         self.threads_active = True
 
 
-    def stop_threads(self):
+    def stop_threads(self, timeout=1):
+        # Signal the threads to stop
+        self._stop_event.set()
 
+        # Wait for the threads to stop with a timeout and remove them from the list if they have stopped
+        active_threads = []
         for thread in self.threads:
-            thread.join()
+            thread.join(timeout)
+            if thread.is_alive():
+                active_threads.append(thread)
 
-        self.threads = []
-        self.threads_active = False
+        self.threads = active_threads
+        self.threads_active = len(self.threads) > 0
 
 
     def download_artist(self, artist_key, destination, source):
