@@ -451,11 +451,12 @@ def search_filter(search_input, sort_by="id", artist_name=None):
     artist_match = re.search(r"artist:([a-zA-Z0-9 -_]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
     score_match = re.search(r"score:([><][0-9.]+?)(?=\s(artist:|score:|tags:)|$)", dangerous)
 
-    print(search_input.lower())
+    print(search_input.lower() == "")
     print(search_input.lower() == "browse all images")
+    print(artist_name == None)
     print(tag_match, artist_match, score_match)
     #if browse all images, skip regex
-    if not search_input == "" and not search_input.lower() == "browse all images":            
+    if (not search_input == "" and not search_input.lower() == "browse all images") or not artist_name == None:            
         if tag_match:
             tags = tag_match.group(1).split(',')
             formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
