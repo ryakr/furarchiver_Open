@@ -27,6 +27,7 @@ class Image(db.Model):
     autotagged = db.Column(db.Boolean, default=False)
     Edited = db.Column(db.Boolean, default=False)
     Deleted = db.Column(db.Boolean, default=False)
+    Bytes = db.Column(db.Integer)
 
 class Tag(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

@@ -302,6 +302,11 @@ def sql_database_cleanup(app, FA_FOLDER):
                     image.md5 = hashlib.md5(file.read()).hexdigest()
                 yield (index + 1), total_images  
                 continue
+            if image.Bytes == 0 and image.Deleted == False:
+                print(f"Image {image.file_name}{image.file_type} has no byte size, calculating...")
+                image.Bytes = os.path.getsize(image_path)
+                yield (index + 1), total_images  
+                continue
         #if artists have no images, delete them
         artists = db.session.query(Artist).all()
         for artist in artists:

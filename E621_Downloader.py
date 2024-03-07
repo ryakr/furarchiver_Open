@@ -136,6 +136,7 @@ class E621Downloader:
                         artist.from_e621 = True
             
             image = Image.query.filter_by(md5=post['file']['md5']).first()
+            bites = os.path.getsize(os.path.join(self.output_folder, f"{post['file']['md5']}{post['file']['ext']}"))
             if not image:
                 image = Image(
                     file_name=post['file']['md5'],
@@ -144,7 +145,8 @@ class E621Downloader:
                     md5=post['file']['md5'],
                     check_again=False,
                     score=post['score']['total'],
-                    scored=True
+                    scored=True,
+                    Bytes=bites
                 )
                 self.db_session.add(image)
             self.db_session.commit()

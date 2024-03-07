@@ -417,8 +417,8 @@ def browse_images():
 @app.route('/')
 def home():
     # Gather statistics for the index page
-    artist_count, image_count, total_size = get_fa_stats()
-    total_size_gb = round(total_size / (1024**3), 2)  # Convert bytes to gigabytes and round to 2 decimal places
+    artist_count, image_count, total_size_bytes = get_fa_stats()
+    total_size_gb = round(total_size_bytes / (1024 ** 3), 2)  # Convert bytes to gigabytes
     return render_template('index.html', artist_count=artist_count, image_count=image_count, total_size=total_size_gb)
 
 @app.route('/search', methods=['GET', 'POST'])
@@ -456,7 +456,7 @@ def search_filter(search_input, sort_by="id", artist_name=None):
     print(artist_name == None)
     print(tag_match, artist_match, score_match)
     #if browse all images, skip regex
-    if (not search_input == "" and not search_input.lower() == "browse all images") or not artist_name == None:            
+    if (not search_input == "" and not search_input.lower() == "browse all images") or (not artist_name == None and not artist_name == ""):            
         if tag_match:
             tags = tag_match.group(1).split(',')
             formatted_tags = [tag.strip().replace(' ', '_') for tag in tags if tag.strip()]
@@ -638,7 +638,11 @@ def get_fa_stats():
 
     artist_count = Artist.query.order_by(Artist.id.desc()).first().id
     image_count = Image.query.order_by(Image.id.desc()).first().id
-    total_size = sum([os.path.getsize(os.path.join(r, file)) for r, d, files in os.walk(FA_FOLDER) for file in files])
+    # query the database for the total size of all images
+    total_size = 0
+    #get bytes of every image in the database except deleted
+    for image in Image.query.filter_by(Deleted=False).all():
+        total_size += image.Bytes
     return artist_count, image_count, total_size
 
 with app.app_context():

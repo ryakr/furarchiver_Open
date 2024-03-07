@@ -93,7 +93,11 @@ class Downloader:
     def add_image_to_db(self, file_name, file_type, artist):
         image = Image.query.filter_by(file_name=file_name).first()
         if image is None:
-            image = Image(file_name=file_name, file_type=file_type, artist_id=artist.id, checked_count=0, check_again=True)
+            if os.path.exists(os.path.join(self.download_destination, artist.name, file_name + file_type)):
+                bites = os.path.getsize(os.path.join(self.download_destination, artist.name, file_name + file_type))
+            else:
+                bites = 0
+            image = Image(file_name=file_name, file_type=file_type, artist_id=artist.id, checked_count=0, check_again=True, Bytes=bites)
             self.db_session.add(image)
             self.db_session.commit()
         return image
